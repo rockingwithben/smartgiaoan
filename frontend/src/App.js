@@ -1,5 +1,6 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { Toaster } from 'sonner';
 import { I18nProvider } from './lib/i18n';
 import { AuthProvider } from './lib/auth';
 import Landing from './pages/Landing';
@@ -14,6 +15,7 @@ import Terms from './pages/Terms';
 import Account from './pages/Account';
 import Levels from './pages/Levels';
 import NotFound from './pages/NotFound';
+import { CookieConsent } from './components/CookieConsent';
 import './App.css';
 
 function AppRouter() {
@@ -44,6 +46,8 @@ function App() {
       <AuthProvider>
         <BrowserRouter>
           <AppRouter />
+          <CookieConsent />
+          <Toaster position="bottom-right" richColors closeButton toastOptions={{ duration: 4000 }} />
         </BrowserRouter>
       </AuthProvider>
     </I18nProvider>

@@ -174,6 +174,24 @@ async def auth_logout(response: Response, session_token: Optional[str] = Cookie(
     return {"ok": True}
 
 
+@api_router.get("/auth/export")
+async def auth_export(user: User = Depends(require_user)):
+    """Export all user data for GDPR-style data portability."""
+    user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    worksheets = await db.worksheets.find({"user_id": user.user_id}, {"_id": 0}).to_list(1000)
+    return {"user": user_doc, "worksheets": worksheets}
+
+
+@api_router.delete("/auth/delete-account")
+async def auth_delete_account(response: Response, user: User = Depends(require_user)):
+    """Permanently delete user, sessions and worksheets."""
+    await db.worksheets.delete_many({"user_id": user.user_id})
+    await db.user_sessions.delete_many({"user_id": user.user_id})
+    await db.users.delete_one({"user_id": user.user_id})
+    response.delete_cookie("session_token", path="/")
+    return {"deleted": True}
+
+
 # ========== WORKSHEET ROUTES ==========
 WORKSHEET_SYSTEM_PROMPT = """ROLE
 You are a SENIOR CAMBRIDGE ESOL EXAMINER and ESL CURRICULUM DESIGNER with 20+ years of experience writing official exam materials (YLE Starters/Movers/Flyers, KET, PET, FCE, IELTS) and authoring textbooks used in Vietnamese schools. You write the kind of worksheet a Vietnamese teacher proudly photocopies for tomorrow's class.

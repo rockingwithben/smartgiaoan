@@ -2,7 +2,7 @@
 
 > Cambridge & CEFR-aligned ESL worksheets for Vietnamese teachers — generated in seconds.
 
-🌐 **Live at: https://smartgiaoan.site/**
+🌐 **Live at: https://www.smartgiaoan.site/**
 
 A focused SaaS that turns one topic + one CEFR level into a printable, three-page Cambridge-style worksheet, fully localised to Vietnam (names, places, culture).
 

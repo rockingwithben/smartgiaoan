@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { toast } from 'sonner';
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
 import { AdSlot } from '../components/AdSlot';
@@ -95,12 +96,15 @@ export default function Dashboard() {
       if (!user) setAnonUsed(getAnonUsed() + 1);
       // refresh history
       if (user) listWorksheets().then(setHistory).catch(() => {});
+      toast.success(lang === 'vi' ? 'Bài tập đã sẵn sàng' : 'Worksheet ready', { description: data.title });
     } catch (err) {
       const status = err?.response?.status;
       if (status === 402) {
         setPaywall(true);
       } else {
-        setError(err?.response?.data?.detail || err.message || 'Failed to generate');
+        const msg = err?.response?.data?.detail || err.message || 'Failed to generate';
+        setError(msg);
+        toast.error(lang === 'vi' ? 'Không thể tạo bài tập' : 'Couldn\u2019t generate', { description: msg });
       }
     } finally {
       setGenerating(false);
@@ -113,21 +117,26 @@ export default function Dashboard() {
 
   const handlePdf = async () => {
     if (!paperRef.current) return;
-    const canvas = await html2canvas(paperRef.current, { scale: 2, backgroundColor: '#ffffff' });
-    const img = canvas.toDataURL('image/png');
-    const pdf = new jsPDF({ orientation: 'p', unit: 'pt', format: 'a4' });
-    const pageW = pdf.internal.pageSize.getWidth();
-    const pageH = pdf.internal.pageSize.getHeight();
-    const ratio = canvas.height / canvas.width;
-    let imgW = pageW - 40;
-    let imgH = imgW * ratio;
-    if (imgH > pageH - 40) {
-      imgH = pageH - 40;
-      imgW = imgH / ratio;
+    try {
+      const canvas = await html2canvas(paperRef.current, { scale: 2, backgroundColor: '#ffffff' });
+      const img = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({ orientation: 'p', unit: 'pt', format: 'a4' });
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const ratio = canvas.height / canvas.width;
+      let imgW = pageW - 40;
+      let imgH = imgW * ratio;
+      if (imgH > pageH - 40) {
+        imgH = pageH - 40;
+        imgW = imgH / ratio;
+      }
+      pdf.addImage(img, 'PNG', (pageW - imgW) / 2, 20, imgW, imgH);
+      const safeTitle = (worksheet?.title || 'worksheet').replace(/[^a-z0-9]+/gi, '_').toLowerCase();
+      pdf.save(`smartgiaoan_${safeTitle}.pdf`);
+      toast.success(lang === 'vi' ? 'PDF đã tải xuống' : 'PDF downloaded');
+    } catch {
+      toast.error(lang === 'vi' ? 'Không thể tạo PDF' : 'Could not create PDF');
     }
-    pdf.addImage(img, 'PNG', (pageW - imgW) / 2, 20, imgW, imgH);
-    const safeTitle = (worksheet?.title || 'worksheet').replace(/[^a-z0-9]+/gi, '_').toLowerCase();
-    pdf.save(`smartgiaoan_${safeTitle}.pdf`);
   };
 
   const onWatchAd = (tier) => {

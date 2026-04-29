@@ -21,6 +21,16 @@ export async function logout() {
   await http.post('/auth/logout');
 }
 
+export async function exportAccount() {
+  const r = await http.get('/auth/export');
+  return r.data;
+}
+
+export async function deleteAccount() {
+  const r = await http.delete('/auth/delete-account');
+  return r.data;
+}
+
 export async function generateWorksheet(payload) {
   const r = await http.post('/worksheets/generate', payload);
   return r.data;
