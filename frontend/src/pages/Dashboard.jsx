@@ -35,6 +35,7 @@ export default function Dashboard() {
     skill: 'reading',
     topic: '',
     num_questions: 24,
+    grammar_focus: '',
   });
   const [generating, setGenerating] = useState(false);
   const [worksheet, setWorksheet] = useState(null);
@@ -214,6 +215,16 @@ export default function Dashboard() {
                   onChange={onChange('topic')}
                   data-testid="form-topic"
                   required
+                />
+              </Field>
+              <Field label={lang === 'vi' ? 'Trọng tâm ngữ pháp (tuỳ chọn)' : 'Grammar focus (optional)'}>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder={lang === 'vi' ? 'VD: thì quá khứ đơn, câu điều kiện loại 2' : 'e.g. past simple, second conditional'}
+                  value={form.grammar_focus}
+                  onChange={onChange('grammar_focus')}
+                  data-testid="form-grammar"
                 />
               </Field>
               <Field label={t('form_questions')}>

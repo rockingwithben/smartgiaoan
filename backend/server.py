@@ -51,7 +51,8 @@ class WorksheetRequest(BaseModel):
     cefr: str   # A1, A2, B1, B2, C1, C2
     skill: str  # reading / writing / grammar / vocabulary / listening
     topic: str
-    num_questions: int = 8
+    num_questions: int = 24
+    grammar_focus: Optional[str] = None  # optional, e.g. "past simple", "second conditional"
 
 
 class Worksheet(BaseModel):
@@ -305,22 +306,27 @@ JSON SCHEMA (return EXACTLY this shape)
 
 
 def build_user_prompt(req: WorksheetRequest) -> str:
-    return f"""Create a SUBSTANTIAL Cambridge-style ESL worksheet that fills at least 3 printed A4 pages.
+    # Map our level → Cambridge exam family for the level_tag
+    exam_map = {
+        "Kindergarten": "YLE Pre-Starters",
+        "Primary": "YLE Starters / Movers / Flyers",
+        "Secondary": "KET / PET / FCE",
+        "IELTS": "IELTS",
+    }
+    exam = exam_map.get(req.level, "Cambridge")
+    grammar = req.grammar_focus or "appropriate to the level and topic"
+    return f"""TASK — generate a flawless, classroom-ready, FUN worksheet.
 
-Parameters:
-- Student level: {req.level}
-- CEFR: {req.cefr}
-- Skill focus: {req.skill}
-- Topic: {req.topic}
-- Target total questions across all sections: {req.num_questions} (this is a GUIDE — you may exceed it to satisfy the 3-page minimum and the level-appropriate question range).
+CEFR Level: {req.cefr}
+Cambridge family: {exam}
+Student level: {req.level}
+Skill focus: {req.skill}
+Topic: "{req.topic}"
+Target grammar: "{grammar}"
+Target total questions: {req.num_questions} (you may exceed to satisfy the 3-page minimum and level-mapped range).
 
-Output discipline:
-- Strict JSON only.
-- Multi-section structure as specified (5 sections preferred, 4 minimum).
-- Long, level-appropriate passage.
-- Vocabulary glossary with 8-12 items.
-- Writing task with success criteria.
-- Vietnamese localisation throughout (names, places, culture)."""
+Apply the dynamic persona / tone rules from your system instructions for this CEFR level.
+Strict JSON. Vietnamese localisation throughout. Make it fun enough that students forget it's a worksheet."""
 
 
 @api_router.post("/worksheets/generate")

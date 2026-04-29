@@ -76,6 +76,7 @@ export function WorksheetView({ data, paperRef }) {
               <tr className="text-left border-b border-ink/30">
                 <th className="py-1.5 pr-3 overline">Word</th>
                 <th className="py-1.5 pr-3 overline">PoS</th>
+                <th className="py-1.5 pr-3 overline">Tiếng Việt</th>
                 <th className="py-1.5 pr-3 overline">Definition</th>
                 <th className="py-1.5 overline">Example</th>
               </tr>
@@ -85,8 +86,9 @@ export function WorksheetView({ data, paperRef }) {
                 <tr key={i} className="border-b border-ink/10 align-top">
                   <td className="py-1.5 pr-3 font-medium">{v.word}</td>
                   <td className="py-1.5 pr-3 italic text-muted-foreground">{v.part_of_speech}</td>
-                  <td className="py-1.5 pr-3">{v.definition}</td>
-                  <td className="py-1.5 text-muted-foreground">{v.example}</td>
+                  <td className="py-1.5 pr-3 font-medium text-terracotta">{v.meaning_vi || ''}</td>
+                  <td className="py-1.5 pr-3">{v.definition_en || v.definition || ''}</td>
+                  <td className="py-1.5 text-muted-foreground italic">{v.example}</td>
                 </tr>
               ))}
             </tbody>
@@ -151,6 +153,22 @@ export function WorksheetView({ data, paperRef }) {
           </ol>
         </div>
       ))}
+
+      {/* Creative Task */}
+      {c.creative_task && (
+        <div className="mb-8 mt-10 border-l-4 border-terracotta bg-sand p-5">
+          <p className="overline text-terracotta">{c.creative_task.title || 'Creative Task'}</p>
+          {c.creative_task.scene_description && (
+            <p className="mt-2 italic text-ink/85 leading-relaxed">{c.creative_task.scene_description}</p>
+          )}
+          {c.creative_task.instructions && (
+            <p className="mt-3 text-base">{c.creative_task.instructions}</p>
+          )}
+          <div className="mt-4 space-y-2">
+            {[...Array(6).keys()].map((_, i) => <div key={i} className="write-line"></div>)}
+          </div>
+        </div>
+      )}
 
       {/* Writing Task */}
       {c.writing_task && (
