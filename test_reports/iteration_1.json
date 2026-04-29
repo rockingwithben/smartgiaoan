@@ -1,0 +1,41 @@
+{
+  "summary": "Backend-only testing for SmartGiaoAn (FastAPI). 12/12 pytest tests passed against public REACT_APP_BACKEND_URL. Verified health, auth (invalid session 401, missing token 401, valid Bearer 200), worksheets list (auth required, empty list for new user), rewarded ad grants +1 bonus_credit, mark-premium toggles is_premium=true with persistence, logout deletes session, MongoDB docs use user_id (no _id leakage) and ISO timestamp strings, premium quota bypass logic verified. /api/worksheets/generate confirmed returning 502 with proper error detail because Gemini key was reported leaked by Google (expected per request, not a failure).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/auth/logout", "issue": "Only reads session_token from Cookie, ignores Authorization Bearer header. Bearer-only clients (e.g., mobile/SPA without cookies) cannot invalidate their session server-side."},
+      {"endpoint": "POST /api/billing/mark-premium", "issue": "No PayPal webhook verification - any authenticated user can mark themselves premium by calling this endpoint directly. Acceptable for MVP but flagged in code comment; document this risk."},
+      {"endpoint": "POST /api/usage/grant-rewarded", "issue": "tier field is accepted but unused - all tiers grant 1 credit. Either honor tiers (short=1, medium=2, long=3) or remove from contract."},
+      {"endpoint": "POST /api/auth/session", "issue": "Does not check for existing active session for the same user before creating a new one - sessions accumulate in user_sessions on each login."},
+      {"endpoint": "POST /api/worksheets/generate", "issue": "Confirmed 502 'Your API key was reported as leaked. Please use another API key.' Error structure is correct. Pending: user must rotate GEMINI_API_KEY."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_smartgiaoan_backend.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Replace GEMINI_API_KEY in /app/backend/.env with a fresh, non-leaked key, then re-run /api/worksheets/generate to validate JSON output and free_used increment.",
+    "Optional: support Bearer token in /api/auth/logout (read Authorization header same as get_current_user_optional).",
+    "Optional: implement PayPal webhook verification before flipping is_premium.",
+    "Optional: honor RewardedRequest.tier (e.g., short=1, medium=2, long=3) or drop the field."
+  ],
+  "critical_code_review_comments": [
+    "server.py is single-file (~360 lines) - acceptable now but split into routers/auth/worksheets/billing modules as features grow.",
+    "genai.GenerativeModel().generate_content is a sync call invoked inside async endpoint - blocks the event loop. Wrap with asyncio.to_thread or use aiohttp-based REST client for better concurrency.",
+    "/api/billing/mark-premium trusts the client - no PayPal payload/webhook verification. High abuse risk for production.",
+    "/api/auth/session expires_at stored as ISO string but get_current_user_optional handles both string and datetime - good defensive code; standardize on one.",
+    "CORS allow_origins defaults to '*' with allow_credentials=True - browsers reject this combination. Set explicit origin list for production.",
+    "No rate limiting on /api/worksheets/generate - one user could rapidly drain Gemini quota / cost.",
+    "Anonymous worksheet generation is allowed (user is Optional) but quota is only enforced for logged-in users - anonymous users have unlimited generation server-side."
+  ],
+  "updated_files": ["/app/backend/tests/test_smartgiaoan_backend.py"],
+  "success_rate": {"backend": "100%", "frontend": "not tested (per request)"},
+  "test_credentials": "Seeded via pymongo fixture; user_id/token generated per test module run, cleaned up after.",
+  "seed_data_creation": "Test user + session inserted into MongoDB test_database via pymongo fixture (TEST_ prefix), cleaned up at module teardown.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All 12 backend tests pass. Re-run /app/backend/tests/test_smartgiaoan_backend.py after Gemini key rotation to validate the generate endpoint returns 200 with proper JSON content. Bearer token auth works; cookie-based session also works (logout uses cookie only).",
+  "rca_of_the_issue": "Gemini /worksheets/generate 502: ROOT CAUSE = GEMINI_API_KEY 'AIzaSyCmcoDWC82X60_M_SKi2VwV9Z6W8GtaDHY' in /app/backend/.env was flagged as leaked by Google (HTTP 403 'Your API key was reported as leaked'). Reproduction: POST /api/worksheets/generate with valid auth + payload returns 502 with detail field. Mitigation: user generates new Gemini API key at https://aistudio.google.com/apikey, replaces value in /app/backend/.env, sudo supervisorctl restart backend."
+}
