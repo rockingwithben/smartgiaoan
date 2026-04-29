@@ -41,3 +41,12 @@ package-lock.json
 
 # Emergent runtime
 /app/memory/test_credentials.md
+-e 
+# Environment and credential files
+.env
+.env.*
+*.env
+credentials.json
+*.pem
+*.key
+.credentials
