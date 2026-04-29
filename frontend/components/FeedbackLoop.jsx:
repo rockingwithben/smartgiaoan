@@ -1,0 +1,51 @@
+import { useState } from 'react';
+
+export default function FeedbackLoop({ worksheetId, originalPrompt, onRegenerate }) {
+  const [feedback, setFeedback] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [status, setStatus] = useState('idle'); // idle, rating, fixing
+
+  const handleFixIt = async () => {
+    setIsSubmitting(true);
+    try {
+      // This calls your Render backend to fix the worksheet
+      const response = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/worksheets/fix`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ worksheetId, originalPrompt, feedback })
+      });
+      
+      const newWorksheet = await response.json();
+      onRegenerate(newWorksheet); // Updates the UI with the perfect PDF
+      setStatus('fixed');
+    } catch (error) {
+      console.error("Failed to fix:", error);
+    }
+    setIsSubmitting(false);
+  };
+
+  if (status === 'fixed') return <p className="text-green-600 font-bold">✨ Worksheet upgraded based on your feedback!</p>;
+
+  return (
+    <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+      <h3 className="font-bold text-gray-800 mb-2">Not quite right?</h3>
+      <p className="text-sm text-gray-600 mb-3">Tell the AI exactly what to change, and it will rewrite it in seconds.</p>
+      
+      <textarea 
+        className="w-full p-2 border rounded-md text-sm mb-3"
+        rows="2"
+        placeholder="e.g., Make the vocabulary easier, it's too hard for kindergarten..."
+        value={feedback}
+        onChange={(e) => setFeedback(e.target.value)}
+      />
+      
+      <button 
+        onClick={handleFixIt}
+        disabled={isSubmitting || !feedback}
+        className="bg-black text-white px-4 py-2 rounded-md font-semibold disabled:bg-gray-400"
+      >
+        {isSubmitting ? 'Rewriting with AI...' : 'Fix Worksheet'}
+      </button>
+    </div>
+  );
+}
