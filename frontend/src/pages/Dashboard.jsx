@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { Navbar } from '../components/Navbar';
+import { Footer } from '../components/Footer';
 import { AdSlot } from '../components/AdSlot';
 import { WorksheetView } from '../components/WorksheetView';
 import { PaywallModal, UpgradeModal } from '../components/PaywallModal';
@@ -32,7 +33,7 @@ export default function Dashboard() {
     cefr: 'A2',
     skill: 'reading',
     topic: '',
-    num_questions: 8,
+    num_questions: 24,
   });
   const [generating, setGenerating] = useState(false);
   const [worksheet, setWorksheet] = useState(null);
@@ -209,13 +210,14 @@ export default function Dashboard() {
               <Field label={t('form_questions')}>
                 <input
                   type="number"
-                  min={4}
-                  max={20}
+                  min={16}
+                  max={40}
                   className="form-input"
                   value={form.num_questions}
-                  onChange={(e) => setForm((f) => ({ ...f, num_questions: Math.max(4, Math.min(20, +e.target.value || 8)) }))}
+                  onChange={(e) => setForm((f) => ({ ...f, num_questions: Math.max(16, Math.min(40, +e.target.value || 24)) }))}
                   data-testid="form-questions"
                 />
+                <p className="text-[11px] text-muted-foreground mt-1">3+ page worksheet · 16 minimum, 40 max</p>
               </Field>
               {error && <div className="text-xs text-destructive border border-destructive/40 px-3 py-2 bg-destructive/10" data-testid="form-error">{error}</div>}
               <button type="submit" disabled={generating} className="btn-primary w-full" data-testid="generate-btn">
@@ -270,6 +272,7 @@ export default function Dashboard() {
       <PaywallModal open={paywall} onClose={() => setPaywall(false)} onWatchAd={onWatchAd} />
       <UpgradeModal open={upgrade} onClose={() => { setUpgrade(false); navigate('/dashboard', { replace: true }); }} />
       <RewardedAdModal open={rewarded.open} tier={rewarded.tier} onClose={() => setRewarded({ ...rewarded, open: false })} onClaimed={onRewardClaimed} />
+      <Footer />
     </div>
   );
 }
