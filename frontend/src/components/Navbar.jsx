@@ -22,7 +22,7 @@ export function Navbar() {
       <div className="max-w-7xl mx-auto flex items-center justify-between px-6 lg:px-10 py-4">
         <Link to="/" className="flex items-baseline gap-2" data-testid="brand-link">
           <span className="font-display text-2xl font-medium tracking-tight">SmartGiao<span className="text-terracotta">An</span></span>
-          <span className="hidden sm:inline text-[10px] tracking-[0.2em] uppercase text-muted-foreground font-bold">VN · ESL</span>
+          <span className="hidden sm:inline text-[10px] tracking-[0.2em] uppercase text-muted-foreground font-bold">smartgiaoan.site</span>
         </Link>
 
         <nav className="hidden md:flex items-center gap-6 lg:gap-7 text-sm">

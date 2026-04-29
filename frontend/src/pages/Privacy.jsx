@@ -19,7 +19,7 @@ export default function Privacy() {
       <h2 className="font-display text-3xl mt-8">6. Your rights</h2>
       <p className="mt-3 text-muted-foreground leading-relaxed">Email hello@smartgiaoan.com to request export or full deletion of your data; we action it within 30 days.</p>
       <h2 className="font-display text-3xl mt-8">7. Contact</h2>
-      <p className="mt-3 text-muted-foreground leading-relaxed">Questions? hello@smartgiaoan.com.</p>
+      <p className="mt-3 text-muted-foreground leading-relaxed">Questions? hello@smartgiaoan.site.</p>
     </>
   );
   const vi = (
@@ -37,7 +37,7 @@ export default function Privacy() {
       <h2 className="font-display text-3xl mt-8">6. Quyền của bạn</h2>
       <p className="mt-3 text-muted-foreground leading-relaxed">Email hello@smartgiaoan.com để yêu cầu xuất hoặc xoá toàn bộ dữ liệu trong vòng 30 ngày.</p>
       <h2 className="font-display text-3xl mt-8">7. Liên hệ</h2>
-      <p className="mt-3 text-muted-foreground leading-relaxed">Mọi thắc mắc: hello@smartgiaoan.com.</p>
+      <p className="mt-3 text-muted-foreground leading-relaxed">Mọi thắc mắc: hello@smartgiaoan.site.</p>
     </>
   );
   return (

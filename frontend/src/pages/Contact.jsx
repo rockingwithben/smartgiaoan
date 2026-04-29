@@ -11,7 +11,7 @@ export default function Contact() {
     // Open email client as a graceful fallback (no backend mail integration)
     const subject = encodeURIComponent('SmartGiaoAn — message from ' + form.name);
     const body = encodeURIComponent(`From: ${form.name} <${form.email}>\n\n${form.message}`);
-    window.location.href = `mailto:hello@smartgiaoan.com?subject=${subject}&body=${body}`;
+    window.location.href = `mailto:hello@smartgiaoan.site?subject=${subject}&body=${body}`;
     setSent(true);
   };
   const en = { eyebrow: 'Contact', title: 'Tell us what your students need.', intro: 'Bug reports, level requests, partnership ideas — every email is read.', name: 'Your name', email: 'Email', msg: 'Message', send: 'Send message', sent: 'Thanks — your email client should be opening now.' };
@@ -38,7 +38,7 @@ export default function Contact() {
         <aside className="md:col-span-5 space-y-6">
           <div className="bg-white border border-border p-6">
             <p className="overline text-terracotta">Email</p>
-            <a className="block mt-2 font-display text-2xl hover:underline" href="mailto:hello@smartgiaoan.com">hello@smartgiaoan.com</a>
+            <a className="block mt-2 font-display text-2xl hover:underline" href="mailto:hello@smartgiaoan.site">hello@smartgiaoan.site</a>
           </div>
           <div className="bg-white border border-border p-6">
             <p className="overline text-terracotta">{lang === 'vi' ? 'Phản hồi mong đợi' : 'Response time'}</p>

@@ -54,7 +54,7 @@ export function Footer() {
       <div className="border-t border-border">
         <div className="max-w-7xl mx-auto px-6 lg:px-10 py-6 text-xs text-muted-foreground flex flex-col sm:flex-row justify-between gap-2">
           <span>© {new Date().getFullYear()} SmartGiaoAn — {labels.rights}</span>
-          <span className="font-mono tracking-widest">VN · ESL · CAMBRIDGE</span>
+          <span className="font-mono tracking-widest">smartgiaoan.site · VN · ESL</span>
         </div>
       </div>
     </footer>
