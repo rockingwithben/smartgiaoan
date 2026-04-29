@@ -1,0 +1,99 @@
+{
+  "theme": "LIGHT",
+  "archetype": "4 (Swiss & High-Contrast)",
+  "vibe": "Premium, Old Money Tech, Cambridge-aligned, Localized",
+  "typography": {
+    "heading_font": "Cormorant Garamond",
+    "body_font": "Manrope",
+    "monospace_font": "JetBrains Mono",
+    "scale": {
+      "h1": "text-4xl sm:text-5xl lg:text-6xl tracking-tighter leading-none font-medium",
+      "h2": "text-2xl sm:text-3xl lg:text-4xl tracking-tight font-medium",
+      "h3": "text-xl sm:text-2xl font-medium",
+      "h4": "text-lg sm:text-xl font-medium",
+      "body": "text-base leading-relaxed font-normal",
+      "small": "text-sm",
+      "overline": "text-xs tracking-[0.2em] uppercase font-bold"
+    },
+    "pairing_strategy": "Classic Serif Head (Cormorant Garamond) + Clean Sans Body (Manrope) for a premium, authoritative 'Cambridge Press' feel."
+  },
+  "colors": {
+    "background": "#F9F9F8",
+    "surface": "#FFFFFF",
+    "text_primary": "#1A1A1A",
+    "text_secondary": "#5A5A5A",
+    "primary_accent": "#C63A2F",
+    "primary_accent_hover": "#A52D23",
+    "border": "#E5E5E4",
+    "muted_background": "#F2F2F0"
+  },
+  "layout_spacing": {
+    "marketing": {
+      "strategy": "Tetris Grid, Generous padding. Use p-12 to p-24.",
+      "grid": "grid-cols-1 md:grid-cols-12 gap-8 lg:gap-12"
+    },
+    "dashboard": {
+      "strategy": "Control Room Grid. Dense, structured.",
+      "grid": "grid-cols-1 md:grid-cols-4 gap-6",
+      "sidebar": "col-span-1 border-r border-border h-full",
+      "main_panel": "col-span-1 md:col-span-3 h-full"
+    },
+    "corners": "rounded-sm (max 4px radius, avoiding overly bubbly generic SaaS looks)"
+  },
+  "components": {
+    "buttons": {
+      "primary": "bg-[#C63A2F] text-white hover:bg-[#A52D23] rounded-sm px-6 py-2 transition-colors",
+      "secondary": "bg-transparent border border-[#E5E5E4] text-[#1A1A1A] hover:bg-[#F2F2F0] rounded-sm px-6 py-2 transition-colors"
+    },
+    "cards": {
+      "default": "bg-white border border-[#E5E5E4] rounded-sm shadow-sm p-6"
+    },
+    "worksheet_preview": {
+      "container": "bg-white border border-[#E5E5E4] shadow-lg mx-auto w-full max-w-[800px] min-h-[1000px] p-10 md:p-16",
+      "styling": "Internal styling MUST use the Cormorant Garamond serif font to simulate a real printed test. Use black and white strictly inside the worksheet area."
+    },
+    "ad_placeholders": {
+      "container": "bg-[#F9F9F8] border border-dashed border-[#CCCCCC] p-4 flex items-center justify-center relative min-h-[250px]",
+      "label": "absolute top-2 left-2 text-[10px] tracking-widest text-[#999999] uppercase font-bold"
+    },
+    "bilingual_toggle": {
+      "styling": "Minimalist text toggle 'EN / VI'. Active state bold and black, inactive gray. No bubbly switch backgrounds."
+    },
+    "paywall_modal": {
+      "styling": "Glassmorphism backdrop (backdrop-blur-xl bg-black/60). Modal content uses solid white background, sharp corners, bold serif typography to emphasize value. Two clear, equal-width options: 'Watch Ad' (secondary styling) vs 'Upgrade Premium' (primary terracotta styling)."
+    },
+    "free_counter_badge": {
+      "styling": "Stark black/white minimalist badge with a small terracotta notification dot. e.g. '2/3 Free Worksheets'"
+    }
+  },
+  "media_assets": {
+    "hero_image": {
+      "url": "https://images.pexels.com/photos/5212703/pexels-photo-5212703.jpeg",
+      "description": "Teacher engaging with students. Use in the hero section. Apply max bg-black/30 overlay if text is placed over it."
+    },
+    "worksheet_texture": {
+      "url": "https://images.pexels.com/photos/20137646/pexels-photo-20137646.jpeg",
+      "description": "Subtle paper texture. Use as a very low opacity (e.g. 5%) background pattern for the worksheet preview panel to give it a physical feel."
+    },
+    "history_empty_state": {
+      "url": "https://images.unsplash.com/photo-1606326608606-aa0b62935f2b?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzF8MHwxfHNlYXJjaHwxfHxleGFtJTIwcGFwZXIlMjBwZW5jaWx8ZW58MHx8fHwxNzc3NDQ0NDI1fDA&ixlib=rb-4.1.0&q=85",
+      "description": "Exam paper and pencil. Use for the empty state of the Worksheet History sidebar."
+    }
+  },
+  "motion": "Minimalism. Hover states lift slightly (-translate-y-[1px]). Slide up and fade in for the Paywall Modal. No bouncing or heavy scaling.",
+  "icons": {
+    "library": "@phosphor-icons/react",
+    "style": "Duotone weight to match the premium, sophisticated vibe."
+  },
+  "instructions_to_main_agent": [
+    "INSTALL FONTS: Add Google Fonts links for 'Cormorant Garamond', 'Manrope', and 'JetBrains Mono' to index.html.",
+    "INSTALL ICONS: Run 'yarn add @phosphor-icons/react'. Use Phosphor Icons for all UI iconography.",
+    "TAILWIND CONFIG: Add the custom font families to tailwind.config.js (font-serif: Cormorant Garamond, font-sans: Manrope, font-mono: JetBrains Mono).",
+    "SHADCN OVERRIDES: Override the CSS variables in index.css. Set --radius to '0.25rem' to enforce the sharp/premium look. Set primary color to HSL equivalent of #C63A2F.",
+    "LAYOUT - MARKETING: The Landing Page Hero MUST use the Tetris Grid pattern. Do not center everything. Break symmetry.",
+    "LAYOUT - DASHBOARD: Use the Control Room Grid pattern. The left sidebar contains the Generator Form and Ad Placeholders. The right main panel (spanning more columns) contains the Worksheet Preview.",
+    "UI - WORKSHEET: The generated worksheet must look like a physical Cambridge exam paper. Use borders for header boxes, dotted lines for writing spaces, and strict serif typography.",
+    "BILINGUAL: Implement a React Context or simple state to toggle EN/VI text across the UI.",
+    "TESTING: Add data-testid attributes to ALL interactive elements (buttons, inputs, language toggle, paywall options, PDF download button). Format: data-testid='kebab-case-role'."
+  ]
+}
