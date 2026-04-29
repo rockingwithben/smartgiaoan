@@ -6,33 +6,34 @@ export const LEVELS = [
     key: 'Kindergarten',
     label: 'Kindergarten',
     age: 'Ages 3-5',
-    cefr_range: ['A1'],
-    blurb: 'Big-print, picture-cued worksheets — sounds, colours, animals, family.',
+    cefr_range: ['Pre-A1', 'A1'],
+    blurb: 'Cambridge YLE Pre-Starters / Starters style — sounds, colours, animals, family. Big print, picture-cued worksheets with playful storylines.',
   },
   {
     key: 'Primary',
     label: 'Primary',
     age: 'Ages 6-11',
     cefr_range: ['A1', 'A2'],
-    blurb: 'Cambridge YLE Starters, Movers and Flyers style — short stories, simple grammar, everyday vocabulary.',
+    blurb: 'Cambridge YLE Starters / Movers / Flyers style — short stories, simple grammar, everyday vocabulary, recurring Vietnamese characters.',
   },
   {
     key: 'Secondary',
     label: 'Secondary',
     age: 'Ages 12-17',
     cefr_range: ['A2', 'B1', 'B2'],
-    blurb: 'KET / PET / FCE-style tasks — reading comprehension, grammar focus, opinion writing.',
+    blurb: 'KET / PET / FCE-style tasks — modern Vietnamese contexts (Grab, K-pop, university choice), reading comprehension, grammar focus, opinion writing.',
   },
   {
     key: 'IELTS',
     label: 'IELTS',
     age: 'Ages 16+',
     cefr_range: ['B1', 'B2', 'C1'],
-    blurb: 'Authentic IELTS task formats — True/False/Not Given, matching headings, sentence completion, Task 1 & 2 writing.',
+    blurb: 'Authentic IELTS task formats — True/False/Not Given, matching headings, sentence completion, Task 1 & 2 writing on academic Vietnam topics.',
   },
 ];
 
 export const CEFR_DESCRIPTORS = {
+  'Pre-A1': { name: 'Pre-Starter', can_do: 'Recognise basic letters, sounds, colours, simple greetings.' },
   A1: { name: 'Breakthrough', can_do: 'Greet, introduce self, ask simple questions about familiar topics.' },
   A2: { name: 'Waystage', can_do: 'Describe family, daily routine, past holidays in short sentences.' },
   B1: { name: 'Threshold', can_do: 'Handle most travel situations; describe experiences and give opinions.' },
@@ -62,7 +63,7 @@ export const TOPIC_BANK = [
     'Banh mi: history and recipe',
     'Ao dai across the years',
   ]},
-  { group: 'Daily life', items: [
+  { group: 'Daily life (Primary / Secondary)', items: [
     'My daily routine',
     'After-school activities',
     'Helping at home',
@@ -71,14 +72,26 @@ export const TOPIC_BANK = [
     'A day at school',
     'Riding the bus to class',
     'Playing badminton with friends',
+    'Saturday cafe study session',
+    'Choosing what to wear for a school party',
   ]},
-  { group: 'Stories & fun', items: [
+  { group: 'Modern teenage life (B1-B2)', items: [
+    'Choosing a university in Hanoi vs Saigon',
+    'Friday night Grab to a K-pop concert',
+    'My TikTok account: pros and cons',
+    'Saving money on coffee',
+    'A weekend trip to Da Lat',
+    'Should phones be allowed in class?',
+    'My favourite Vietnamese gaming streamer',
+  ]},
+  { group: 'Stories & fun (Kindergarten / Primary)', items: [
     'A talking lotus flower',
     'The lost dragon fruit',
     'Minh and the friendly water buffalo',
     'Lan\u2019s magical conical hat',
     'A story about Halong Bay',
     'The festival in the village',
+    'The cat who learned English',
   ]},
   { group: 'Academic / IELTS', items: [
     'Urbanisation in Vietnam',
@@ -88,5 +101,14 @@ export const TOPIC_BANK = [
     'Renewable energy',
     'Online vs traditional classrooms',
     'Globalisation and local food',
+    'AI and the future of work',
+  ]},
+  { group: 'For parents at home', items: [
+    'Describe your bedroom',
+    'My family tree',
+    'My pet',
+    'What I had for breakfast',
+    'My favourite cartoon',
+    'A weekend with grandparents',
   ]},
 ];

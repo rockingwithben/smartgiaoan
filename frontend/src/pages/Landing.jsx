@@ -14,7 +14,7 @@ export default function Landing() {
   const TESTIMONIALS = [
     { name: 'Cô Hoa', role: 'Primary teacher · Hanoi', quote: 'My students lit up when they saw their own names in the worksheet. I save four hours a week — at least.' },
     { name: 'Mr. Nam', role: 'IELTS tutor · Saigon', quote: 'The True / False / Not Given questions are tighter than half the practice books I own. Genuinely Cambridge-grade.' },
-    { name: 'Cô Linh', role: 'Secondary · Da Nang', quote: 'I print four sheets per topic. Students get layered practice without me prepping for hours.' },
+    { name: 'Sarah, expat KG teacher · Da Nang', role: 'British expat · Da Nang', quote: 'I switched from a giant subscription site that took ten minutes of clicking. SmartGiaoAn is one input field. My weekends are mine again.' },
   ];
 
   return (
@@ -192,14 +192,17 @@ export default function Landing() {
         <section className="border-y border-border bg-white">
           <div className="max-w-7xl mx-auto px-6 lg:px-10 py-20 grid grid-cols-1 md:grid-cols-12 gap-10">
             <div className="md:col-span-4">
-              <p className="overline text-terracotta">Methodology</p>
+              <p className="overline text-terracotta">The anti-bloat alternative</p>
               <h2 className="font-display text-4xl mt-2 leading-tight">Why these worksheets work.</h2>
+              <p className="mt-4 text-sm text-muted-foreground leading-relaxed">
+                Big resource sites give you 14 tabs, endless search filters and templates that feel imported. We give you one input field and three printable pages, locally relevant. Different philosophy entirely.
+              </p>
             </div>
             <div className="md:col-span-8 grid grid-cols-1 sm:grid-cols-2 gap-8">
               {[
                 { t: 'Cambridge-trained AI', b: 'The model is prompted as a senior Cambridge ESOL examiner with explicit CEFR descriptors. We don\u2019t hope for alignment — we mandate it.' },
                 { t: 'Mixed task types', b: 'Multiple choice, True/False/Not Given, matching, fill-blank, short answer, sentence transformation, error correction. Real exams test breadth.' },
-                { t: 'Vietnamese context', b: 'Names, cities, foods, holidays drawn from a curated bank: Tet, Sapa, banh mi, ao dai, lotus ponds. Students see themselves on the page.' },
+                { t: 'Vietnamese context', b: 'Names, cities, foods, holidays drawn from a curated bank: Tet, Sapa, banh mi, ao dai, lotus ponds, modern cafe culture. Students see themselves on the page.' },
                 { t: 'Three-page minimum', b: 'A long passage, vocabulary glossary, four to five sections, a writing task and an answer key. Substantial enough to teach a full lesson.' },
               ].map((m, i) => (
                 <div key={i} className="border-l-2 border-terracotta pl-4">

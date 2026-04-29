@@ -4,9 +4,9 @@ const STRINGS = {
   en: {
     brand: 'SmartGiaoAn',
     tagline: 'Cambridge-aligned ESL worksheets, in seconds.',
-    landing_eyebrow: 'For ESL teachers in Vietnam',
+    landing_eyebrow: 'For teachers, expats & parents in Vietnam',
     hero_title: 'Plan less. Teach more.',
-    hero_sub: 'Generate Cambridge & CEFR-aligned worksheets tailored to your students — from Kindergarten to IELTS — with one click.',
+    hero_sub: 'Cambridge & CEFR-aligned ESL worksheets — local context, classroom-ready PDFs, generated in ten seconds. Built for the frontline: local teachers, expats, and parents who want their evenings back.',
     cta_get_started: 'Get started — Sign in with Google',
     cta_learn_more: 'How it works',
     feat1_title: 'Cambridge-grade content',
@@ -67,9 +67,9 @@ const STRINGS = {
   vi: {
     brand: 'SmartGiaoAn',
     tagline: 'Giáo án ESL chuẩn Cambridge, chỉ trong vài giây.',
-    landing_eyebrow: 'Dành cho giáo viên ESL Việt Nam',
+    landing_eyebrow: 'Dành cho giáo viên, expat & phụ huynh ở Việt Nam',
     hero_title: 'Soạn ít. Dạy nhiều.',
-    hero_sub: 'Tạo bài tập chuẩn Cambridge & CEFR phù hợp học sinh — từ Mầm non đến IELTS — chỉ với một cú nhấp.',
+    hero_sub: 'Bài tập ESL chuẩn Cambridge & CEFR — bối cảnh Việt Nam, PDF sẵn sàng cho lớp, tạo trong 10 giây. Dành cho tuyến đầu: giáo viên Việt, expat và phụ huynh muốn lấy lại buổi tối.',
     cta_get_started: 'Bắt đầu — Đăng nhập Google',
     cta_learn_more: 'Cách hoạt động',
     feat1_title: 'Chất lượng Cambridge',
