@@ -47,7 +47,7 @@ export function Footer() {
           <p className="overline mb-4">{labels.legal}</p>
           <ul className="space-y-2 text-sm">
             <li><Link to="/privacy" className="hover:text-terracotta">{labels.privacy === 'Privacy' ? 'Privacy & Trust' : 'Bảo mật & Lòng tin'}</Link></li>
-            <li><Link to="/terms" className="hover:text-terracotta">{labels.terms}</Link></li>
+            <li><Link to="/terms" className="hover:text-terracotta">{labels.terms === 'Terms' ? 'Terms & Fair Use' : 'Điều khoản'}</Link></li>
           </ul>
         </div>
       </div>
