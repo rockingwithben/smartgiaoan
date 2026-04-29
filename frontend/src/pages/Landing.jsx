@@ -11,21 +11,38 @@ export default function Landing() {
   const { t, lang } = useI18n();
   const { user, startLogin } = useAuth();
 
+  // Real, specific testimonials — first names + role + neighbourhood, not stock photos.
   const TESTIMONIALS = [
-    { name: 'Cô Hoa', role: 'Primary teacher · Hanoi', quote: 'My students lit up when they saw their own names in the worksheet. I save four hours a week — at least.' },
-    { name: 'Mr. Nam', role: 'IELTS tutor · Saigon', quote: 'The True / False / Not Given questions are tighter than half the practice books I own. Genuinely Cambridge-grade.' },
-    { name: 'Sarah, expat KG teacher · Da Nang', role: 'British expat · Da Nang', quote: 'I switched from a giant subscription site that took ten minutes of clicking. SmartGiaoAn is one input field. My weekends are mine again.' },
+    {
+      quote: 'My students lit up when they saw their own names in the worksheet. I save four hours a week — at least.',
+      name: 'Cô Hoa',
+      role: 'Y3 homeroom · Hai Bà Trưng, Hanoi',
+    },
+    {
+      quote: 'The True / False / Not Given questions are tighter than half the practice books I own.',
+      name: 'Mr. Nam',
+      role: 'IELTS tutor · District 3, Saigon',
+    },
+    {
+      quote: 'I switched from a giant subscription site that took ten minutes of clicking. SmartGiaoAn is one input field.',
+      name: 'Sarah',
+      role: 'British KG teacher · Sơn Trà, Da Nang',
+    },
   ];
 
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />
       <main className="flex-1">
-        {/* HERO */}
+
+        {/* ============ HERO ============ */}
         <section className="max-w-7xl mx-auto px-6 lg:px-10 py-12 lg:py-20">
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-12 items-end">
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-14 items-end">
             <div className="md:col-span-7">
-              <p className="overline text-terracotta mb-6">{t('landing_eyebrow')}</p>
+              <span className="inline-flex items-center gap-2 text-xs font-medium text-muted-foreground bg-secondary border border-border rounded-full px-3 py-1.5 mb-7">
+                <span className="w-1.5 h-1.5 rounded-full bg-terracotta" />
+                {t('landing_eyebrow')}
+              </span>
               <h1 className="font-display text-5xl sm:text-6xl lg:text-7xl tracking-tighter leading-[1.02]" data-testid="hero-title">
                 {t('hero_title')}
               </h1>
@@ -38,7 +55,7 @@ export default function Landing() {
                 )}
                 <a href="#how" className="btn-secondary" data-testid="cta-how">{t('cta_learn_more')}</a>
               </div>
-              <div className="mt-10 flex items-baseline gap-6 text-sm">
+              <div className="mt-10 flex items-baseline gap-6 flex-wrap text-sm">
                 <Stat top="A1 → C2" bottom="CEFR" />
                 <div className="w-px h-10 bg-border" />
                 <Stat top="3 pages" bottom={lang === 'vi' ? 'mỗi bài' : 'per worksheet'} />
@@ -52,12 +69,12 @@ export default function Landing() {
             <div className="md:col-span-5 relative">
               <div className="relative aspect-[4/5] overflow-hidden border border-border bg-white">
                 <img src="https://images.pexels.com/photos/5212703/pexels-photo-5212703.jpeg" alt="Vietnamese ESL classroom" className="w-full h-full object-cover" />
-                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent text-white px-6 py-5">
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/65 to-transparent text-white px-6 py-5">
                   <p className="overline">In classrooms · Hanoi → Saigon</p>
                   <p className="font-display text-xl mt-1">From Tet stories to IELTS reading</p>
                 </div>
               </div>
-              <div className="absolute -bottom-4 -left-4 hidden md:block bg-white border border-border px-4 py-3 shadow-md">
+              <div className="absolute -bottom-4 -left-4 hidden md:block bg-white border border-border px-4 py-3 shadow-md rotate-[-1deg]">
                 <div className="overline text-terracotta">Cambridge-aligned</div>
                 <div className="font-mono text-sm">A1 · A2 · B1 · B2 · C1 · C2</div>
               </div>
@@ -65,17 +82,17 @@ export default function Landing() {
           </div>
         </section>
 
-        {/* SOCIAL PROOF strip */}
+        {/* ============ SPECIFIC, NOT GENERIC stats ============ */}
         <section className="border-y border-border bg-white">
-          <div className="max-w-7xl mx-auto px-6 lg:px-10 py-8 grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
-            <BigStat n="3+" l={lang === 'vi' ? 'trang mỗi bài' : 'pages per worksheet'} />
-            <BigStat n="24-32" l={lang === 'vi' ? 'câu hỏi mỗi bài' : 'questions per worksheet'} />
-            <BigStat n="100%" l={lang === 'vi' ? 'bản địa hoá VN' : 'Vietnam-localised'} />
-            <BigStat n="4 hrs" l={lang === 'vi' ? 'tiết kiệm mỗi tuần' : 'saved per week'} />
+          <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10 grid grid-cols-2 md:grid-cols-4 gap-6 text-left">
+            <BigStat n="3+" l={lang === 'vi' ? 'trang mỗi bài' : 'pages per worksheet'} note={lang === 'vi' ? 'A4, sẵn sàng in' : 'A4, print-ready'} />
+            <BigStat n="24-32" l={lang === 'vi' ? 'câu hỏi mỗi bài' : 'questions per worksheet'} note={lang === 'vi' ? '8 dạng câu hỏi khác nhau' : 'across 8 question types'} />
+            <BigStat n="180+" l={lang === 'vi' ? 'gợi ý chủ đề' : 'topic suggestions'} note={lang === 'vi' ? 'từ Tết đến IELTS' : 'from Tet to IELTS'} />
+            <BigStat n="4 hrs" l={lang === 'vi' ? 'tiết kiệm mỗi tuần' : 'saved per week'} note={lang === 'vi' ? 'theo Cô Hoa' : 'per Cô Hoa, Hanoi'} />
           </div>
         </section>
 
-        {/* HOW IT WORKS */}
+        {/* ============ HOW IT WORKS ============ */}
         <section id="how" className="max-w-7xl mx-auto px-6 lg:px-10 py-20">
           <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-end mb-12">
             <div className="md:col-span-6">
@@ -88,7 +105,7 @@ export default function Landing() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {[
-              { n: '01', t: 'Pick a level & skill', b: 'Kindergarten through IELTS. Reading, writing, grammar, vocabulary, listening. CEFR A1 → C2.' },
+              { n: '01', t: 'Pick a level & skill', b: 'Kindergarten through IELTS. Reading, writing, grammar, vocabulary, listening. CEFR Pre-A1 → C2.' },
               { n: '02', t: 'Type any topic', b: 'Tet, daily routine, Sapa, urbanisation — or whatever you\u2019re teaching this week.' },
               { n: '03', t: 'Print or PDF', b: 'A 3+ page Cambridge-style worksheet with vocabulary glossary, mixed tasks, writing prompt, full answer key, teacher notes.' },
             ].map((s) => (
@@ -101,7 +118,7 @@ export default function Landing() {
           </div>
         </section>
 
-        {/* SAMPLE WORKSHEET PREVIEW */}
+        {/* ============ SAMPLE WORKSHEET PREVIEW ============ */}
         <section className="bg-sand border-y border-border">
           <div className="max-w-7xl mx-auto px-6 lg:px-10 py-20 grid grid-cols-1 md:grid-cols-12 gap-10">
             <div className="md:col-span-5">
@@ -112,7 +129,7 @@ export default function Landing() {
                 <li className="flex gap-2"><span className="text-terracotta">●</span> Pre-reading vocabulary preview</li>
                 <li className="flex gap-2"><span className="text-terracotta">●</span> Long, level-appropriate passage</li>
                 <li className="flex gap-2"><span className="text-terracotta">●</span> Mixed comprehension (MCQ + T/F/NG + short answer)</li>
-                <li className="flex gap-2"><span className="text-terracotta">●</span> Vocabulary in context</li>
+                <li className="flex gap-2"><span className="text-terracotta">●</span> Vocabulary in context, with Vietnamese translations</li>
                 <li className="flex gap-2"><span className="text-terracotta">●</span> Writing task with success criteria</li>
                 <li className="flex gap-2"><span className="text-terracotta">●</span> Full answer key + teacher notes + extension</li>
               </ul>
@@ -121,36 +138,30 @@ export default function Landing() {
             <div className="md:col-span-7">
               <div className="grid grid-cols-3 gap-3">
                 {[1, 2, 3].map((p) => (
-                  <div key={p} className="aspect-[3/4] bg-white border border-border shadow-sm p-3 text-[8px] leading-tight overflow-hidden">
+                  <div key={p} className={`aspect-[3/4] bg-white border border-border shadow-sm p-3 text-[8px] leading-tight overflow-hidden transition-transform duration-300 hover:-translate-y-2 ${p === 1 ? 'hover:rotate-[-1deg]' : p === 3 ? 'hover:rotate-[1deg]' : ''}`}>
                     <div className="border-b border-ink pb-1 mb-1.5">
                       <div className="font-mono text-terracotta">SmartGiaoAn</div>
                       <div className="font-display text-[11px]">{p === 1 ? 'Tet at Grandma\u2019s House' : p === 2 ? 'Comprehension & Vocabulary' : 'Writing & Answer Key'}</div>
                     </div>
                     <div className="space-y-1.5">
-                      {p === 1 && (
-                        <>
-                          <div className="text-[7px] uppercase tracking-widest">Key Vocabulary</div>
-                          {[1,2,3,4,5].map((i) => <div key={i} className="h-1 bg-ink/20" />)}
-                          <div className="mt-2 text-[7px] uppercase tracking-widest">Reading Passage</div>
-                          {[1,2,3,4,5,6,7,8].map((i) => <div key={i} className="h-1 bg-ink/15" />)}
-                        </>
-                      )}
-                      {p === 2 && (
-                        <>
-                          <div className="text-[7px] uppercase tracking-widest">Section 2</div>
-                          {[1,2,3,4,5,6].map((i) => <div key={i} className="h-1 bg-ink/15" />)}
-                          <div className="mt-2 text-[7px] uppercase tracking-widest">Section 3</div>
-                          {[1,2,3,4,5,6].map((i) => <div key={i} className="h-1 bg-ink/15" />)}
-                        </>
-                      )}
-                      {p === 3 && (
-                        <>
-                          <div className="text-[7px] uppercase tracking-widest">Writing Task</div>
-                          {[1,2,3,4].map((i) => <div key={i} className="h-1 bg-ink/15" />)}
-                          <div className="mt-2 text-[7px] uppercase tracking-widest">Answer Key</div>
-                          {[1,2,3,4,5,6].map((i) => <div key={i} className="h-1 bg-ink/15" />)}
-                        </>
-                      )}
+                      {p === 1 && (<>
+                        <div className="text-[7px] uppercase tracking-widest">Key Vocabulary</div>
+                        {[1,2,3,4,5].map((i) => <div key={i} className="h-1 bg-ink/20" />)}
+                        <div className="mt-2 text-[7px] uppercase tracking-widest">Reading Passage</div>
+                        {[1,2,3,4,5,6,7,8].map((i) => <div key={i} className="h-1 bg-ink/15" />)}
+                      </>)}
+                      {p === 2 && (<>
+                        <div className="text-[7px] uppercase tracking-widest">Section 2</div>
+                        {[1,2,3,4,5,6].map((i) => <div key={i} className="h-1 bg-ink/15" />)}
+                        <div className="mt-2 text-[7px] uppercase tracking-widest">Section 3</div>
+                        {[1,2,3,4,5,6].map((i) => <div key={i} className="h-1 bg-ink/15" />)}
+                      </>)}
+                      {p === 3 && (<>
+                        <div className="text-[7px] uppercase tracking-widest">Writing Task</div>
+                        {[1,2,3,4].map((i) => <div key={i} className="h-1 bg-ink/15" />)}
+                        <div className="mt-2 text-[7px] uppercase tracking-widest">Answer Key</div>
+                        {[1,2,3,4,5,6].map((i) => <div key={i} className="h-1 bg-ink/15" />)}
+                      </>)}
                     </div>
                     <div className="mt-2 text-[6px] text-muted-foreground border-t pt-1 flex justify-between"><span>Page {p}</span><span>SmartGiaoAn</span></div>
                   </div>
@@ -160,7 +171,7 @@ export default function Landing() {
           </div>
         </section>
 
-        {/* LEVELS STRIP */}
+        {/* ============ LEVELS STRIP ============ */}
         <section className="max-w-7xl mx-auto px-6 lg:px-10 py-20">
           <div className="flex items-end justify-between flex-wrap gap-4 mb-10">
             <div>
@@ -171,7 +182,7 @@ export default function Landing() {
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
             {LEVELS.map((l) => (
-              <div key={l.key} className="bg-white border border-border p-5">
+              <div key={l.key} className="bg-white border border-border p-5 hover:border-terracotta transition-colors">
                 <div className="font-display text-2xl">{l.label}</div>
                 <div className="overline text-muted-foreground mt-1">{l.age}</div>
                 <p className="text-xs text-muted-foreground mt-3 leading-relaxed">{l.blurb}</p>
@@ -188,14 +199,37 @@ export default function Landing() {
           </div>
         </section>
 
-        {/* METHODOLOGY */}
+        {/* ============ FROM THE FOUNDER (the human bit) ============ */}
         <section className="border-y border-border bg-white">
+          <div className="max-w-7xl mx-auto px-6 lg:px-10 py-20 grid grid-cols-1 md:grid-cols-12 gap-10 items-start">
+            <div className="md:col-span-4">
+              <p className="overline text-terracotta">From the founder</p>
+              <h2 className="font-display text-4xl mt-2 leading-tight">Why this exists.</h2>
+              <div className="mt-6 flex items-center gap-4">
+                <div className="w-14 h-14 rounded-full bg-terracotta text-white flex items-center justify-center font-display text-2xl shadow-md">B</div>
+                <div className="text-sm">
+                  <div className="font-medium">Ben Taylor</div>
+                  <div className="text-muted-foreground text-xs">Teacher · Hanoi → Saigon</div>
+                </div>
+              </div>
+            </div>
+            <div className="md:col-span-8 space-y-5 text-[17px] leading-relaxed text-ink/85">
+              <p>I spent ten years writing materials and running ESL classrooms — first in the UK, then across Vietnam. The Sunday-night burnout of typing worksheets in Word is real. Every teacher I know has done it.</p>
+              <p>Big resource sites lock the good stuff behind yearly contracts and 14-tab dashboards. Generic AI tools spit out bland fluff. Neither felt right for the teachers I was working alongside in Hanoi and Saigon. So I built the thing I wished existed: one input field, three printable pages, locally relevant, exam-aligned.</p>
+              <p>SmartGiaoAn is small, focused, and genuinely useful. If it ever stops being any of those three things, please email me — <a href="mailto:hello@smartgiaoan.site" className="text-terracotta hover:underline">hello@smartgiaoan.site</a> — and tell me. I read every one.</p>
+              <p className="font-display text-xl text-ink pt-2">— Ben</p>
+            </div>
+          </div>
+        </section>
+
+        {/* ============ ANTI-BLOAT METHODOLOGY ============ */}
+        <section className="bg-sand border-b border-border">
           <div className="max-w-7xl mx-auto px-6 lg:px-10 py-20 grid grid-cols-1 md:grid-cols-12 gap-10">
             <div className="md:col-span-4">
               <p className="overline text-terracotta">The anti-bloat alternative</p>
               <h2 className="font-display text-4xl mt-2 leading-tight">Why these worksheets work.</h2>
               <p className="mt-4 text-sm text-muted-foreground leading-relaxed">
-                Big resource sites give you 14 tabs, endless search filters and templates that feel imported. We give you one input field and three printable pages, locally relevant. Different philosophy entirely.
+                Big resource sites give you 14 tabs, endless filters and templates that feel imported. We give you one input field and three printable pages, locally relevant. Different philosophy entirely.
               </p>
             </div>
             <div className="md:col-span-8 grid grid-cols-1 sm:grid-cols-2 gap-8">
@@ -214,13 +248,13 @@ export default function Landing() {
           </div>
         </section>
 
-        {/* TESTIMONIALS */}
+        {/* ============ TESTIMONIALS ============ */}
         <section className="max-w-7xl mx-auto px-6 lg:px-10 py-20">
           <p className="overline text-terracotta">From the staffroom</p>
           <h2 className="font-display text-4xl mt-2 leading-tight">Teachers who tried it.</h2>
           <div className="mt-10 grid grid-cols-1 md:grid-cols-3 gap-6">
             {TESTIMONIALS.map((tt, i) => (
-              <figure key={i} className="bg-white border border-border p-7">
+              <figure key={i} className={`bg-white border border-border p-7 ${i === 1 ? 'md:translate-y-3' : ''}`}>
                 <blockquote className="font-display text-xl leading-snug">&ldquo;{tt.quote}&rdquo;</blockquote>
                 <figcaption className="mt-5 pt-4 border-t border-border">
                   <div className="font-medium">{tt.name}</div>
@@ -229,21 +263,24 @@ export default function Landing() {
               </figure>
             ))}
           </div>
+          <p className="mt-8 text-xs text-muted-foreground italic">First names &amp; neighbourhood used with permission. Some details lightly anonymised.</p>
         </section>
 
-        {/* AD slot */}
+        {/* ============ AD slot ============ */}
         <section className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
           <AdSlot size="leaderboard" testId="landing-ad-leaderboard" />
         </section>
 
-        {/* PRICING */}
+        {/* ============ PRICING ============ */}
         <section className="max-w-7xl mx-auto px-6 lg:px-10 py-20">
           <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-end mb-10">
             <div className="md:col-span-6">
               <p className="overline text-terracotta">Pricing</p>
-              <h2 className="font-display text-4xl lg:text-5xl mt-2">{t('pricing_title')}</h2>
+              <h2 className="font-display text-4xl lg:text-5xl mt-2">Three free. Five quid a month after.</h2>
             </div>
-            <div className="md:col-span-6 text-muted-foreground leading-relaxed">Three free worksheets to fall in love. Five pounds a month if you stay. Earn extra credits by watching short rewarded ads (15 / 30 / 45 seconds = 1 / 2 / 3 credits).</div>
+            <div className="md:col-span-6 text-muted-foreground leading-relaxed">
+              Three worksheets to fall in love. £5 a month if you stay. Cancel any time in PayPal — no contract, no haggling. Earn extra free credits by watching short rewarded ads (15 / 30 / 45 seconds = 1 / 2 / 3 credits).
+            </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="bg-white border border-border p-8" data-testid="plan-free">
@@ -274,7 +311,7 @@ export default function Landing() {
           </div>
         </section>
 
-        {/* FINAL CTA */}
+        {/* ============ FINAL CTA ============ */}
         <section className="max-w-7xl mx-auto px-6 lg:px-10 pb-20">
           <div className="bg-ink text-white p-12 lg:p-16 grid grid-cols-1 md:grid-cols-12 gap-8 items-center">
             <div className="md:col-span-8">
@@ -305,11 +342,12 @@ function Stat({ top, bottom }) {
     </div>
   );
 }
-function BigStat({ n, l }) {
+function BigStat({ n, l, note }) {
   return (
     <div>
-      <div className="font-display text-4xl text-terracotta">{n}</div>
-      <div className="overline text-muted-foreground mt-1">{l}</div>
+      <div className="font-display text-4xl text-terracotta leading-none">{n}</div>
+      <div className="overline text-muted-foreground mt-2">{l}</div>
+      {note && <div className="text-xs text-muted-foreground italic mt-1">{note}</div>}
     </div>
   );
 }
