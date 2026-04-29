@@ -71,7 +71,7 @@ export default function Landing() {
             <BigStat n="3+" l={lang === 'vi' ? 'trang mỗi bài' : 'pages per worksheet'} />
             <BigStat n="24-32" l={lang === 'vi' ? 'câu hỏi mỗi bài' : 'questions per worksheet'} />
             <BigStat n="100%" l={lang === 'vi' ? 'bản địa hoá VN' : 'Vietnam-localised'} />
-            <BigStat n="0" l={lang === 'vi' ? 'phút soạn thủ công' : 'minutes hand-typed'} />
+            <BigStat n="4 hrs" l={lang === 'vi' ? 'tiết kiệm mỗi tuần' : 'saved per week'} />
           </div>
         </section>
 
