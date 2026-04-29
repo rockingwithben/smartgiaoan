@@ -68,6 +68,13 @@ class Worksheet(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+# NEW: Model for the Self-Refining Loop feedback
+class FixWorksheetRequest(BaseModel):
+    worksheetId: str
+    originalPrompt: str
+    feedback: str
+
+
 # ========== AUTH HELPERS ==========
 async def get_current_user_optional(
     request: Request,
@@ -392,6 +399,68 @@ async def generate_worksheet(
         "content": content,
         "user": fresh_user,
     }
+
+
+# NEW ROUTE: The AI Self-Refining Loop
+@api_router.post("/worksheets/fix")
+async def fix_worksheet(
+    req: FixWorksheetRequest,
+    user: Optional[User] = Depends(get_current_user_optional)
+):
+    if not GEMINI_API_KEY:
+        raise HTTPException(status_code=500, detail="Gemini API key not configured")
+
+    # 1. Build the strict correction prompt
+    ai_correction_prompt = f"""
+    You are an expert curriculum designer. You previously generated an ESL worksheet using these instructions: 
+    "{req.originalPrompt}"
+    
+    The teacher rejected your worksheet and provided this specific feedback:
+    "{req.feedback}"
+    
+    CRITICAL INSTRUCTION: Rewrite the entire worksheet. You MUST incorporate the teacher's feedback and fix the issues they mentioned. Keep the rest of the structure intact. Return only the updated content in the exact same JSON format as before.
+    """
+
+    try:
+        # 2. Call your existing Gemini setup
+        model = genai.GenerativeModel(
+            model_name="gemini-2.5-flash",
+            system_instruction=WORKSHEET_SYSTEM_PROMPT,
+            generation_config={
+                "response_mime_type": "application/json",
+                "temperature": 0.8,
+            },
+        )
+        result = model.generate_content(ai_correction_prompt)
+        content = json.loads(result.text)
+        
+    except Exception as e:
+        logger.exception("Gemini generation failed during fix")
+        raise HTTPException(status_code=502, detail=f"AI correction failed: {str(e)}")
+
+    # 3. Save the feedback and the fixed worksheet to MongoDB
+    query = {"worksheet_id": req.worksheetId}
+    if user:
+        query["user_id"] = user.user_id
+
+    await db.worksheets.update_one(
+        query,
+        {
+            "$set": {
+                "content": content, 
+                "status": "needs_review" # Flags it so you can find common complaints later
+            },
+            "$push": {
+                "revisions": {
+                    "feedback": req.feedback,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+            }
+        }
+    )
+
+    # 4. Return the new PDF data to the frontend
+    return {"success": True, "content": content}
 
 
 @api_router.get("/worksheets")
