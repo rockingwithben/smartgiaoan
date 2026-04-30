@@ -20,10 +20,10 @@ import './App.css';
 
 // === NEW SMARTGIAOAN IMPORTS ===
 // Make sure you saved these files in the matching folders!
-// If you put them in /components instead of /pages, just change the paths below.
 import PublicLibrary from './pages/PublicLibrary';
 import ProfileSettings from './pages/ProfileSettings';
 import AuthModal from './pages/AuthModal';
+import WorksheetView from './pages/WorksheetView';
 
 function AppRouter() {
   const location = useLocation();
@@ -47,6 +47,7 @@ function AppRouter() {
       
       {/* === NEW SMARTGIAOAN ROUTES === */}
       <Route path="/library" element={<PublicLibrary />} />
+      <Route path="/worksheet/:id" element={<WorksheetView />} />
       <Route path="/profile" element={<ProfileSettings />} />
       <Route path="/login" element={
         <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
