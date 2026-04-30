@@ -27,15 +27,13 @@ export default function AuthCallback() {
         const res = await exchangeSession(session_id);
         
         if (res.user) {
-          setUser(res.user);
+          // This fires the refreshUser callback in auth.jsx to sync state
+          await setUser(res.user); 
           
           // Clean the ugly hash out of the URL bar
           window.history.replaceState(null, '', window.location.pathname);
           
           // SMART ROUTING: 
-          // If the user hasn't set their teaching level or role yet (i.e., new Google sign-up)
-          // force them to the profile page to finish setting up.
-          // Otherwise, straight to the dashboard.
           if (!res.user.teaching_level || !res.user.role) {
             navigate('/profile', { replace: true });
           } else {
@@ -44,7 +42,6 @@ export default function AuthCallback() {
         }
       } catch (e) {
         console.error("Auth callback failed:", e);
-        // If the token expires or fails, send them to our new robust login page
         navigate('/login', { replace: true });
       }
     })();
