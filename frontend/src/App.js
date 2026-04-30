@@ -1,8 +1,10 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { I18nProvider } from './lib/i18n';
 import { AuthProvider } from './lib/auth';
+
+// === STANDARD PAGES ===
 import Landing from './pages/Landing';
 import Dashboard from './pages/Dashboard';
 import AuthCallback from './pages/AuthCallback';
@@ -18,24 +20,44 @@ import NotFound from './pages/NotFound';
 import { CookieConsent } from './components/CookieConsent';
 import './App.css';
 
-// === THE FIX: THESE NOW POINT TO YOUR COMPONENTS FOLDER ===
-import PublicLibrary from './components/PublicLibrary';
-import ProfileSettings from './components/ProfileSettings';
-import AuthModal from './components/AuthModal';
-import WorksheetView from './components/WorksheetView';
+// === THE FIX: ALL SMARTGIAOAN PAGES NOW POINT TO THE PAGES FOLDER ===
+import PublicLibrary from './pages/PublicLibrary';
+import ProfileSettings from './pages/ProfileSettings';
+import AuthModal from './pages/AuthModal';
+import WorksheetView from './pages/WorksheetView';
 
 function AppRouter() {
   const location = useLocation();
+  const navigate = useNavigate(); // Proper React routing
   
+  // Catches the Google OAuth redirect hash
   if (location.hash?.includes('session_id=')) {
     return <AuthCallback />;
   }
   
   return (
     <Routes>
+      {/* Core Routes */}
       <Route path="/" element={<Landing />} />
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/levels" element={<Levels />} />
+      
+      {/* New Feature Routes */}
+      <Route path="/library" element={<PublicLibrary />} />
+      <Route path="/worksheet/:id" element={<WorksheetView />} />
+      <Route path="/profile" element={<ProfileSettings />} />
+      
+      {/* Upgraded Authentication Route */}
+      <Route path="/login" element={
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+          <AuthModal onLoginSuccess={() => {
+            // Instantly routes to the dashboard without a hard page reload
+            navigate('/dashboard', { replace: true });
+          }} />
+        </div>
+      } />
+
+      {/* Legal & Info Routes */}
       <Route path="/about" element={<About />} />
       <Route path="/pricing" element={<Pricing />} />
       <Route path="/faq" element={<FAQ />} />
@@ -44,19 +66,7 @@ function AppRouter() {
       <Route path="/terms" element={<Terms />} />
       <Route path="/account" element={<Account />} />
       
-      {/* === NEW SMARTGIAOAN ROUTES === */}
-      <Route path="/library" element={<PublicLibrary />} />
-      <Route path="/worksheet/:id" element={<WorksheetView />} />
-      <Route path="/profile" element={<ProfileSettings />} />
-      <Route path="/login" element={
-        <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-          <AuthModal onLoginSuccess={(user) => {
-            // Once they successfully log in with the new system, shoot them straight to the dashboard
-            window.location.href = "/dashboard";
-          }} />
-        </div>
-      } />
-
+      {/* 404 Catch-all */}
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
