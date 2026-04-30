@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
+import { Analytics } from '@vercel/analytics/react';
 import { I18nProvider } from './lib/i18n';
 import { AuthProvider } from './lib/auth';
 
@@ -80,6 +81,7 @@ function App() {
           <AppRouter />
           <CookieConsent />
           <Toaster position="bottom-right" richColors closeButton toastOptions={{ duration: 4000 }} />
+          <Analytics />
         </BrowserRouter>
       </AuthProvider>
     </I18nProvider>
