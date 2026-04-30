@@ -18,12 +18,11 @@ import NotFound from './pages/NotFound';
 import { CookieConsent } from './components/CookieConsent';
 import './App.css';
 
-// === NEW SMARTGIAOAN IMPORTS ===
-// Make sure you saved these files in the matching folders!
-import PublicLibrary from './pages/PublicLibrary';
-import ProfileSettings from './pages/ProfileSettings';
-import AuthModal from './pages/AuthModal';
-import WorksheetView from './pages/WorksheetView';
+// === THE FIX: THESE NOW POINT TO YOUR COMPONENTS FOLDER ===
+import PublicLibrary from './components/PublicLibrary';
+import ProfileSettings from './components/ProfileSettings';
+import AuthModal from './components/AuthModal';
+import WorksheetView from './components/WorksheetView';
 
 function AppRouter() {
   const location = useLocation();
