@@ -18,11 +18,20 @@ import NotFound from './pages/NotFound';
 import { CookieConsent } from './components/CookieConsent';
 import './App.css';
 
+// === NEW SMARTGIAOAN IMPORTS ===
+// Make sure you saved these files in the matching folders!
+// If you put them in /components instead of /pages, just change the paths below.
+import PublicLibrary from './pages/PublicLibrary';
+import ProfileSettings from './pages/ProfileSettings';
+import AuthModal from './pages/AuthModal';
+
 function AppRouter() {
   const location = useLocation();
+  
   if (location.hash?.includes('session_id=')) {
     return <AuthCallback />;
   }
+  
   return (
     <Routes>
       <Route path="/" element={<Landing />} />
@@ -35,6 +44,19 @@ function AppRouter() {
       <Route path="/privacy" element={<Privacy />} />
       <Route path="/terms" element={<Terms />} />
       <Route path="/account" element={<Account />} />
+      
+      {/* === NEW SMARTGIAOAN ROUTES === */}
+      <Route path="/library" element={<PublicLibrary />} />
+      <Route path="/profile" element={<ProfileSettings />} />
+      <Route path="/login" element={
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+          <AuthModal onLoginSuccess={(user) => {
+            // Once they successfully log in with the new system, shoot them straight to the dashboard
+            window.location.href = "/dashboard";
+          }} />
+        </div>
+      } />
+
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
