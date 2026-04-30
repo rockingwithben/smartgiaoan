@@ -7,6 +7,8 @@ import json
 import uuid
 import logging
 import httpx
+import hashlib
+import secrets
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional, Any, Dict
@@ -32,6 +34,19 @@ api_router = APIRouter(prefix="/api")
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# ========== PASSWORD HASHING HELPERS ==========
+def hash_password(password: str) -> str:
+    salt = secrets.token_hex(16)
+    pwd_hash = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt.encode('utf-8'), 100000).hex()
+    return f"{salt}:{pwd_hash}"
+
+def verify_password(password: str, hashed_str: str) -> bool:
+    try:
+        salt, stored_hash = hashed_str.split(':')
+        pwd_hash = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt.encode('utf-8'), 100000).hex()
+        return pwd_hash == stored_hash
+    except:
+        return False
 
 # ========== MODELS ==========
 class User(BaseModel):
@@ -43,17 +58,16 @@ class User(BaseModel):
     is_premium: bool = False
     free_used: int = 0
     bonus_credits: int = 0
+    password_hash: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-
 class WorksheetRequest(BaseModel):
-    level: str  # Kindergarten / Primary / Secondary / IELTS
-    cefr: str   # A1, A2, B1, B2, C1, C2
-    skill: str  # reading / writing / grammar / vocabulary / listening
+    level: str  
+    cefr: str   
+    skill: str  
     topic: str
     num_questions: int = 24
-    grammar_focus: Optional[str] = None  # optional, e.g. "past simple", "second conditional"
-
+    grammar_focus: Optional[str] = None  
 
 class Worksheet(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -67,13 +81,14 @@ class Worksheet(BaseModel):
     content: Dict[str, Any]
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-
-# NEW: Model for the Self-Refining Loop feedback
 class FixWorksheetRequest(BaseModel):
     worksheetId: str
     originalPrompt: str
     feedback: str
 
+class EmailAuthRequest(BaseModel):
+    email: str
+    password: str
 
 # ========== AUTH HELPERS ==========
 async def get_current_user_optional(
@@ -102,21 +117,73 @@ async def get_current_user_optional(
         return None
     return User(**user_doc)
 
-
 async def require_user(user: Optional[User] = Depends(get_current_user_optional)) -> User:
     if user is None:
         raise HTTPException(status_code=401, detail="Not authenticated")
     return user
 
-
 # ========== AUTH ROUTES ==========
+@api_router.post("/auth/register")
+async def auth_register(payload: EmailAuthRequest, response: Response):
+    email = payload.email.lower()
+    existing = await db.users.find_one({"email": email})
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    user_id = f"user_{uuid.uuid4().hex[:12]}"
+    await db.users.insert_one({
+        "user_id": user_id,
+        "email": email,
+        "name": email.split("@")[0],
+        "password_hash": hash_password(payload.password),
+        "is_premium": False,
+        "free_used": 0,
+        "bonus_credits": 0,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+
+    session_token = str(uuid.uuid4())
+    expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+    await db.user_sessions.insert_one({
+        "session_id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "session_token": session_token,
+        "expires_at": expires_at.isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    response.set_cookie(key="session_token", value=session_token, httponly=True, secure=True, samesite="none", max_age=7*24*3600, path="/")
+    user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    return {"user": user_doc, "session_token": session_token}
+
+@api_router.post("/auth/login")
+async def auth_login(payload: EmailAuthRequest, response: Response):
+    email = payload.email.lower()
+    user_doc = await db.users.find_one({"email": email})
+    
+    if not user_doc or not user_doc.get("password_hash"):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    if not verify_password(payload.password, user_doc["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    session_token = str(uuid.uuid4())
+    expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+    await db.user_sessions.insert_one({
+        "session_id": str(uuid.uuid4()),
+        "user_id": user_doc["user_id"],
+        "session_token": session_token,
+        "expires_at": expires_at.isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    response.set_cookie(key="session_token", value=session_token, httponly=True, secure=True, samesite="none", max_age=7*24*3600, path="/")
+    user_doc.pop("_id", None)
+    return {"user": user_doc, "session_token": session_token}
+
 class SessionRequest(BaseModel):
     session_id: str
 
-
 @api_router.post("/auth/session")
 async def auth_session(payload: SessionRequest, response: Response):
-    """Exchange Emergent session_id for session_token."""
     async with httpx.AsyncClient(timeout=15) as http:
         r = await http.get(
             "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
@@ -126,53 +193,29 @@ async def auth_session(payload: SessionRequest, response: Response):
         raise HTTPException(status_code=401, detail="Invalid session")
     data = r.json()
     email = data["email"]
-    # Upsert user
     existing = await db.users.find_one({"email": email}, {"_id": 0})
     if existing:
         user_id = existing["user_id"]
-        await db.users.update_one(
-            {"user_id": user_id},
-            {"$set": {"name": data.get("name", ""), "picture": data.get("picture", "")}},
-        )
+        await db.users.update_one({"user_id": user_id}, {"$set": {"name": data.get("name", ""), "picture": data.get("picture", "")}})
     else:
         user_id = f"user_{uuid.uuid4().hex[:12]}"
         await db.users.insert_one({
-            "user_id": user_id,
-            "email": email,
-            "name": data.get("name", ""),
-            "picture": data.get("picture", ""),
-            "is_premium": False,
-            "free_used": 0,
-            "bonus_credits": 0,
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "user_id": user_id, "email": email, "name": data.get("name", ""), "picture": data.get("picture", ""),
+            "is_premium": False, "free_used": 0, "bonus_credits": 0, "created_at": datetime.now(timezone.utc).isoformat(),
         })
-    # Save session
     expires_at = datetime.now(timezone.utc) + timedelta(days=7)
     await db.user_sessions.insert_one({
-        "session_id": str(uuid.uuid4()),
-        "user_id": user_id,
-        "session_token": data["session_token"],
-        "expires_at": expires_at.isoformat(),
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "session_id": str(uuid.uuid4()), "user_id": user_id, "session_token": data["session_token"],
+        "expires_at": expires_at.isoformat(), "created_at": datetime.now(timezone.utc).isoformat(),
     })
-    response.set_cookie(
-        key="session_token",
-        value=data["session_token"],
-        httponly=True,
-        secure=True,
-        samesite="none",
-        max_age=7 * 24 * 3600,
-        path="/",
-    )
+    response.set_cookie(key="session_token", value=data["session_token"], httponly=True, secure=True, samesite="none", max_age=7 * 24 * 3600, path="/")
     user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0})
     return {"user": user_doc, "session_token": data["session_token"]}
-
 
 @api_router.get("/auth/me")
 async def auth_me(user: User = Depends(require_user)):
     user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
     return user_doc
-
 
 @api_router.post("/auth/logout")
 async def auth_logout(response: Response, session_token: Optional[str] = Cookie(None)):
@@ -181,24 +224,19 @@ async def auth_logout(response: Response, session_token: Optional[str] = Cookie(
     response.delete_cookie("session_token", path="/")
     return {"ok": True}
 
-
 @api_router.get("/auth/export")
 async def auth_export(user: User = Depends(require_user)):
-    """Export all user data for GDPR-style data portability."""
     user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
     worksheets = await db.worksheets.find({"user_id": user.user_id}, {"_id": 0}).to_list(1000)
     return {"user": user_doc, "worksheets": worksheets}
 
-
 @api_router.delete("/auth/delete-account")
 async def auth_delete_account(response: Response, user: User = Depends(require_user)):
-    """Permanently delete user, sessions and worksheets."""
     await db.worksheets.delete_many({"user_id": user.user_id})
     await db.user_sessions.delete_many({"user_id": user.user_id})
     await db.users.delete_one({"user_id": user.user_id})
     response.delete_cookie("session_token", path="/")
     return {"deleted": True}
-
 
 # ========== WORKSHEET ROUTES ==========
 WORKSHEET_SYSTEM_PROMPT = """ROLE
@@ -311,9 +349,7 @@ JSON SCHEMA (return EXACTLY this shape)
 }
 """
 
-
 def build_user_prompt(req: WorksheetRequest) -> str:
-    # Map our level → Cambridge exam family for the level_tag
     exam_map = {
         "Kindergarten": "YLE Pre-Starters",
         "Primary": "YLE Starters / Movers / Flyers",
@@ -335,7 +371,6 @@ Target total questions: {req.num_questions} (you may exceed to satisfy the 3-pag
 Apply the dynamic persona / tone rules from your system instructions for this CEFR level.
 Strict JSON. Vietnamese localisation throughout. Make it fun enough that students forget it's a worksheet."""
 
-
 @api_router.post("/worksheets/generate")
 async def generate_worksheet(
     req: WorksheetRequest,
@@ -353,7 +388,6 @@ async def generate_worksheet(
         is_admin = True
         logger.info(f"🔥 GOD MODE ACTIVATED: {user.email} bypassed the paywall.")
 
-    # Quota enforcement (only for logged-in users; anonymous users tracked by frontend localStorage)
     if user and not user.is_premium and not is_admin:
         free_total = 3 + user.bonus_credits
         if user.free_used >= free_total:
@@ -363,33 +397,22 @@ async def generate_worksheet(
         model = genai.GenerativeModel(
             model_name="gemini-2.5-flash",
             system_instruction=WORKSHEET_SYSTEM_PROMPT,
-            generation_config={
-                "response_mime_type": "application/json",
-                "temperature": 0.8,
-            },
+            generation_config={"response_mime_type": "application/json", "temperature": 0.8},
         )
         result = model.generate_content(build_user_prompt(req))
-        text = result.text
-        content = json.loads(text)
+        content = json.loads(result.text)
     except Exception as e:
         logger.exception("Gemini generation failed")
         raise HTTPException(status_code=502, detail=f"AI generation failed: {str(e)}")
 
     worksheet_id = f"ws_{uuid.uuid4().hex[:12]}"
     doc = {
-        "worksheet_id": worksheet_id,
-        "user_id": user.user_id if user else None,
-        "title": content.get("title", req.topic),
-        "level": req.level,
-        "cefr": req.cefr,
-        "skill": req.skill,
-        "topic": req.topic,
-        "content": content,
+        "worksheet_id": worksheet_id, "user_id": user.user_id if user else None, "title": content.get("title", req.topic),
+        "level": req.level, "cefr": req.cefr, "skill": req.skill, "topic": req.topic, "content": content,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.worksheets.insert_one(doc)
 
-    # Increment usage if logged in & not premium AND NOT ADMIN
     if user and not user.is_premium and not is_admin:
         await db.users.update_one({"user_id": user.user_id}, {"$inc": {"free_used": 1}})
 
@@ -397,28 +420,13 @@ async def generate_worksheet(
     if user:
         fresh_user = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
 
-    return {
-        "worksheet_id": worksheet_id,
-        "title": doc["title"],
-        "level": req.level,
-        "cefr": req.cefr,
-        "skill": req.skill,
-        "topic": req.topic,
-        "content": content,
-        "user": fresh_user,
-    }
+    return {"worksheet_id": worksheet_id, "title": doc["title"], "level": req.level, "cefr": req.cefr, "skill": req.skill, "topic": req.topic, "content": content, "user": fresh_user}
 
-
-# NEW ROUTE: The AI Self-Refining Loop
 @api_router.post("/worksheets/fix")
-async def fix_worksheet(
-    req: FixWorksheetRequest,
-    user: Optional[User] = Depends(get_current_user_optional)
-):
+async def fix_worksheet(req: FixWorksheetRequest, user: Optional[User] = Depends(get_current_user_optional)):
     if not GEMINI_API_KEY:
         raise HTTPException(status_code=500, detail="Gemini API key not configured")
 
-    # 1. Build the strict correction prompt
     ai_correction_prompt = f"""
     You are an expert curriculum designer. You previously generated an ESL worksheet using these instructions: 
     "{req.originalPrompt}"
@@ -430,14 +438,10 @@ async def fix_worksheet(
     """
 
     try:
-        # 2. Call your existing Gemini setup
         model = genai.GenerativeModel(
             model_name="gemini-2.5-flash",
             system_instruction=WORKSHEET_SYSTEM_PROMPT,
-            generation_config={
-                "response_mime_type": "application/json",
-                "temperature": 0.8,
-            },
+            generation_config={"response_mime_type": "application/json", "temperature": 0.8},
         )
         result = model.generate_content(ai_correction_prompt)
         content = json.loads(result.text)
@@ -446,80 +450,49 @@ async def fix_worksheet(
         logger.exception("Gemini generation failed during fix")
         raise HTTPException(status_code=502, detail=f"AI correction failed: {str(e)}")
 
-    # 3. Save the feedback and the fixed worksheet to MongoDB
     query = {"worksheet_id": req.worksheetId}
-    if user:
-        query["user_id"] = user.user_id
+    if user: query["user_id"] = user.user_id
 
     await db.worksheets.update_one(
         query,
         {
-            "$set": {
-                "content": content, 
-                "status": "needs_review" # Flags it so you can find common complaints later
-            },
-            "$push": {
-                "revisions": {
-                    "feedback": req.feedback,
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }
-            }
+            "$set": {"content": content, "status": "needs_review"},
+            "$push": {"revisions": {"feedback": req.feedback, "timestamp": datetime.now(timezone.utc).isoformat()}}
         }
     )
-
-    # 4. Return the new PDF data to the frontend
     return {"success": True, "content": content}
-
 
 @api_router.get("/worksheets")
 async def list_worksheets(user: User = Depends(require_user)):
     docs = await db.worksheets.find({"user_id": user.user_id}, {"_id": 0}).sort("created_at", -1).to_list(50)
     return docs
 
-
 @api_router.get("/worksheets/{worksheet_id}")
 async def get_worksheet(worksheet_id: str, user: User = Depends(require_user)):
     doc = await db.worksheets.find_one({"worksheet_id": worksheet_id, "user_id": user.user_id}, {"_id": 0})
-    if not doc:
-        raise HTTPException(status_code=404, detail="Not found")
+    if not doc: raise HTTPException(status_code=404, detail="Not found")
     return doc
 
-
-# ========== USAGE / REWARDED AD ==========
 class RewardedRequest(BaseModel):
-    tier: str  # 'short' | 'medium' | 'long'
-
+    tier: str  
 
 @api_router.post("/usage/grant-rewarded")
 async def grant_rewarded(payload: RewardedRequest, user: User = Depends(require_user)):
-    """Grant bonus credits after user watches a rewarded ad. Longer ads = more credits."""
     tier_credits = {"short": 1, "medium": 2, "long": 3}
     credit = tier_credits.get(payload.tier, 1)
-    await db.users.update_one(
-        {"user_id": user.user_id},
-        {"$inc": {"bonus_credits": credit}},
-    )
+    await db.users.update_one({"user_id": user.user_id}, {"$inc": {"bonus_credits": credit}})
     user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
     return {"granted": credit, "user": user_doc}
 
-
-# ========== UPGRADE (PayPal) ==========
 @api_router.post("/billing/mark-premium")
 async def mark_premium(user: User = Depends(require_user)):
-    """Called by frontend after PayPal hosted-button success. NOTE: For production, use webhook verification."""
-    await db.users.update_one(
-        {"user_id": user.user_id},
-        {"$set": {"is_premium": True, "premium_since": datetime.now(timezone.utc).isoformat()}},
-    )
+    await db.users.update_one({"user_id": user.user_id}, {"$set": {"is_premium": True, "premium_since": datetime.now(timezone.utc).isoformat()}})
     user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
     return user_doc
 
-
-# ========== HEALTH ==========
 @api_router.get("/")
 async def root():
     return {"app": "SmartGiaoAn", "status": "ok"}
-
 
 app.include_router(api_router)
 
@@ -530,7 +503,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
