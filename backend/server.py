@@ -345,8 +345,16 @@ async def generate_worksheet(
     if not GEMINI_API_KEY:
         raise HTTPException(status_code=500, detail="Gemini API key not configured")
 
+    # --- GOD MODE LOGIC ---
+    ADMIN_EMAILS = ["rockingwithben@gmail.com"]
+    is_admin = False
+    
+    if user and user.email in ADMIN_EMAILS:
+        is_admin = True
+        logger.info(f"🔥 GOD MODE ACTIVATED: {user.email} bypassed the paywall.")
+
     # Quota enforcement (only for logged-in users; anonymous users tracked by frontend localStorage)
-    if user and not user.is_premium:
+    if user and not user.is_premium and not is_admin:
         free_total = 3 + user.bonus_credits
         if user.free_used >= free_total:
             raise HTTPException(status_code=402, detail="Free quota exceeded. Upgrade to Premium or watch an ad.")
@@ -381,8 +389,8 @@ async def generate_worksheet(
     }
     await db.worksheets.insert_one(doc)
 
-    # Increment usage if logged in & not premium
-    if user and not user.is_premium:
+    # Increment usage if logged in & not premium AND NOT ADMIN
+    if user and not user.is_premium and not is_admin:
         await db.users.update_one({"user_id": user.user_id}, {"$inc": {"free_used": 1}})
 
     fresh_user = None
