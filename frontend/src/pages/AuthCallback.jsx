@@ -5,7 +5,8 @@ import { useAuth } from '../lib/auth';
 
 export default function AuthCallback() {
   const navigate = useNavigate();
-  const { setUser } = useAuth();
+  // Destructuring checkAuth instead of setUser
+  const { checkAuth } = useAuth(); 
   const hasProcessed = useRef(false);
 
   useEffect(() => {
@@ -27,8 +28,8 @@ export default function AuthCallback() {
         const res = await exchangeSession(session_id);
         
         if (res.user) {
-          // This fires the refreshUser callback in auth.jsx to sync state
-          await setUser(res.user); 
+          // This will hit /auth/me with the new cookie to securely sync state
+          await checkAuth(); 
           
           // Clean the ugly hash out of the URL bar
           window.history.replaceState(null, '', window.location.pathname);
@@ -45,7 +46,7 @@ export default function AuthCallback() {
         navigate('/login', { replace: true });
       }
     })();
-  }, [navigate, setUser]);
+  }, [navigate, checkAuth]);
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
