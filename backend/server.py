@@ -54,12 +54,14 @@ class User(BaseModel):
     user_id: str
     email: str
     name: str
+    role: str = "Teacher" # NEW: Role tracking
+    heard_from: str = ""  # NEW: Referral tracking
     picture: Optional[str] = ""
     is_premium: bool = False
     free_used: int = 0
     bonus_credits: int = 0
     password_hash: Optional[str] = None
-    # NEW: Teacher Profile Data
+    # Teacher Profile Data
     teaching_level: Optional[str] = None
     class_size: Optional[str] = None
     focus_area: Optional[str] = None
@@ -83,7 +85,7 @@ class Worksheet(BaseModel):
     skill: str
     topic: str
     content: Dict[str, Any]
-    is_public: bool = True  # NEW: Quality control flag for the library
+    is_public: bool = True  # Quality control flag for the library
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class FixWorksheetRequest(BaseModel):
@@ -94,6 +96,9 @@ class FixWorksheetRequest(BaseModel):
 class EmailAuthRequest(BaseModel):
     email: str
     password: str
+    name: Optional[str] = ""            # NEW
+    role: Optional[str] = "Teacher"     # NEW
+    heard_from: Optional[str] = ""      # NEW
 
 class ProfileUpdateRequest(BaseModel):
     teaching_level: str
@@ -144,7 +149,9 @@ async def auth_register(payload: EmailAuthRequest, response: Response):
     await db.users.insert_one({
         "user_id": user_id,
         "email": email,
-        "name": email.split("@")[0],
+        "name": payload.name if payload.name else email.split("@")[0], # NEW: Saves actual name
+        "role": payload.role,                                          # NEW: Saves role
+        "heard_from": payload.heard_from,                              # NEW: Saves referral
         "password_hash": hash_password(payload.password),
         "is_premium": False,
         "free_used": 0,
@@ -446,7 +453,7 @@ async def generate_worksheet(
     doc = {
         "worksheet_id": worksheet_id, "user_id": user.user_id if user else None, "title": content.get("title", req.topic),
         "level": req.level, "cefr": req.cefr, "skill": req.skill, "topic": req.topic, "content": content,
-        "is_public": True, # NEW: Automatically flagged for the public library!
+        "is_public": True, # Automatically flagged for the public library!
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.worksheets.insert_one(doc)
@@ -493,7 +500,7 @@ async def fix_worksheet(req: FixWorksheetRequest, user: Optional[User] = Depends
             "$set": {
                 "content": content, 
                 "status": "needs_review",
-                "is_public": False # NEW: Removes bad worksheets from the public library
+                "is_public": False # Removes bad worksheets from the public library
             },
             "$push": {"revisions": {"feedback": req.feedback, "timestamp": datetime.now(timezone.utc).isoformat()}}
         }
@@ -511,51 +518,3 @@ async def get_public_library(level: Optional[str] = None):
         query["level"] = level
         
     # Grab the 50 freshest worksheets to display on the public feed
-    docs = await db.worksheets.find(query, {"_id": 0}).sort("created_at", -1).limit(50).to_list(50)
-    return docs
-
-@api_router.get("/worksheets")
-async def list_worksheets(user: User = Depends(require_user)):
-    docs = await db.worksheets.find({"user_id": user.user_id}, {"_id": 0}).sort("created_at", -1).to_list(50)
-    return docs
-
-@api_router.get("/worksheets/{worksheet_id}")
-async def get_worksheet(worksheet_id: str, user: User = Depends(require_user)):
-    doc = await db.worksheets.find_one({"worksheet_id": worksheet_id, "user_id": user.user_id}, {"_id": 0})
-    if not doc: raise HTTPException(status_code=404, detail="Not found")
-    return doc
-
-class RewardedRequest(BaseModel):
-    tier: str  
-
-@api_router.post("/usage/grant-rewarded")
-async def grant_rewarded(payload: RewardedRequest, user: User = Depends(require_user)):
-    tier_credits = {"short": 1, "medium": 2, "long": 3}
-    credit = tier_credits.get(payload.tier, 1)
-    await db.users.update_one({"user_id": user.user_id}, {"$inc": {"bonus_credits": credit}})
-    user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
-    return {"granted": credit, "user": user_doc}
-
-@api_router.post("/billing/mark-premium")
-async def mark_premium(user: User = Depends(require_user)):
-    await db.users.update_one({"user_id": user.user_id}, {"$set": {"is_premium": True, "premium_since": datetime.now(timezone.utc).isoformat()}})
-    user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
-    return user_doc
-
-@api_router.get("/")
-async def root():
-    return {"app": "SmartGiaoAn", "status": "ok"}
-
-app.include_router(api_router)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()
