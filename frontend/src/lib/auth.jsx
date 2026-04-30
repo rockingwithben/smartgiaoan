@@ -28,6 +28,18 @@ export function AuthProvider({ children }) {
     checkAuth();
   }, [checkAuth]);
 
+  // Exposing refreshUser to allow returning the user object directly
+  const refreshUser = useCallback(async () => {
+    try {
+      const me = await getMe();
+      setUser(me);
+      return me;
+    } catch {
+      setUser(null);
+      return null;
+    }
+  }, []);
+
   const startLogin = useCallback(() => {
     // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
     const redirectUrl = window.location.origin + '/dashboard';
@@ -41,7 +53,18 @@ export function AuthProvider({ children }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, setUser, loading, startLogin, logout, refresh: checkAuth }}>
+    <AuthContext.Provider 
+      value={{ 
+        user, 
+        setUser, 
+        loading, 
+        startLogin, 
+        logout, 
+        checkAuth, 
+        refreshUser, 
+        refresh: checkAuth 
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
