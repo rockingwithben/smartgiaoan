@@ -346,7 +346,7 @@ async def generate_worksheet(
         raise HTTPException(status_code=500, detail="Gemini API key not configured")
 
     # --- GOD MODE LOGIC ---
-    ADMIN_EMAILS = ["rockingwithben@gmail.com"]
+    ADMIN_EMAILS = ["bentaylors@hotmail.co.uk"]
     is_admin = False
     
     if user and user.email in ADMIN_EMAILS:
