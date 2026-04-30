@@ -284,7 +284,14 @@ export default function Dashboard() {
               </div>
             )}
           </div>
-          <WorksheetView data={worksheet} paperRef={paperRef} />
+          
+          {/* UPDATED: We pass onRegenerate down so the FeedbackLoop can instantly update the screen! */}
+          <WorksheetView 
+            data={worksheet} 
+            paperRef={paperRef} 
+            onRegenerate={(newContent) => setWorksheet({ ...worksheet, content: newContent })}
+          />
+
           {!user?.is_premium && <AdSlot size="leaderboard" testId="bottom-ad" />}
         </main>
       </div>
