@@ -395,6 +395,23 @@ def build_user_prompt(req: WorksheetRequest, user_doc: dict = None) -> str:
     if user_doc and user_doc.get("teaching_level"):
         profile_context = f"\nTEACHER PROFILE CONTEXT: This class is for {user_doc.get('teaching_level')} students. The class size is {user_doc.get('class_size')}, focusing heavily on {user_doc.get('focus_area')}. Scale the activity formats, font sizes, and instructions to perfectly match this exact demographic."
 
+    # NEW: Specific rule injection based on the level requested
+    level_specific_rules = ""
+    if req.level == "Kindergarten":
+        level_specific_rules = """
+        KINDERGARTEN OVERRIDE:
+        - Keep the passage under 40 words or omit it entirely.
+        - For questions, output simple 1-word answers so the UI can generate TRACING lines.
+        - Include physical instructions like "Color the apple red" or "Circle the big cat".
+        """
+    elif req.level == "IELTS":
+        level_specific_rules = """
+        IELTS OVERRIDE:
+        - The passage MUST be academic, dense, and at least 500 words.
+        - You MUST include a section with "true_false_not_given" question types.
+        - You MUST include a section with "matching" (e.g., matching headings to paragraphs).
+        """
+
     return f"""TASK — generate a flawless, classroom-ready, FUN worksheet.
 
 CEFR Level: {req.cefr}
@@ -405,6 +422,7 @@ Topic: "{req.topic}"
 Target grammar: "{grammar}"
 Target total questions: {req.num_questions} (you may exceed to satisfy the 3-page minimum and level-mapped range).
 {profile_context}
+{level_specific_rules}
 
 Apply the dynamic persona / tone rules from your system instructions for this CEFR level.
 Strict JSON. Vietnamese localisation throughout. Make it fun enough that students forget it's a worksheet."""
@@ -518,3 +536,51 @@ async def get_public_library(level: Optional[str] = None):
         query["level"] = level
         
     # Grab the 50 freshest worksheets to display on the public feed
+    docs = await db.worksheets.find(query, {"_id": 0}).sort("created_at", -1).limit(50).to_list(50)
+    return docs
+
+@api_router.get("/worksheets")
+async def list_worksheets(user: User = Depends(require_user)):
+    docs = await db.worksheets.find({"user_id": user.user_id}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    return docs
+
+@api_router.get("/worksheets/{worksheet_id}")
+async def get_worksheet(worksheet_id: str, user: User = Depends(require_user)):
+    doc = await db.worksheets.find_one({"worksheet_id": worksheet_id, "user_id": user.user_id}, {"_id": 0})
+    if not doc: raise HTTPException(status_code=404, detail="Not found")
+    return doc
+
+class RewardedRequest(BaseModel):
+    tier: str  
+
+@api_router.post("/usage/grant-rewarded")
+async def grant_rewarded(payload: RewardedRequest, user: User = Depends(require_user)):
+    tier_credits = {"short": 1, "medium": 2, "long": 3}
+    credit = tier_credits.get(payload.tier, 1)
+    await db.users.update_one({"user_id": user.user_id}, {"$inc": {"bonus_credits": credit}})
+    user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    return {"granted": credit, "user": user_doc}
+
+@api_router.post("/billing/mark-premium")
+async def mark_premium(user: User = Depends(require_user)):
+    await db.users.update_one({"user_id": user.user_id}, {"$set": {"is_premium": True, "premium_since": datetime.now(timezone.utc).isoformat()}})
+    user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    return user_doc
+
+@api_router.get("/")
+async def root():
+    return {"app": "SmartGiaoAn", "status": "ok"}
+
+app.include_router(api_router)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_credentials=True,
+    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.on_event("shutdown")
+async def shutdown_db_client():
+    client.close()
