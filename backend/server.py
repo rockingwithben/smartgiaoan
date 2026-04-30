@@ -18,12 +18,12 @@ import google.generativeai as genai
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-# MongoDB
+# ========== MONGODB ==========
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-# Gemini
+# ========== GEMINI ==========
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
@@ -195,6 +195,73 @@ async def auth_login(payload: EmailAuthRequest, response: Response):
     user_doc.pop("_id", None)
     return {"user": user_doc, "session_token": session_token}
 
+@api_router.post("/auth/session")
+async def auth_session_exchange(payload: dict, response: Response):
+    """
+    Exchanges an Emergent session_id for a local SmartGiaoAn session.
+    Called by AuthCallback.jsx after Google OAuth redirect.
+    """
+    session_id = payload.get("session_id")
+    if not session_id:
+        raise HTTPException(status_code=400, detail="session_id required")
+
+    async with httpx.AsyncClient() as client:
+        try:
+            emergent_resp = await client.get(
+                f"https://auth.emergentagent.com/api/session/{session_id}",
+                timeout=10.0
+            )
+            if emergent_resp.status_code != 200:
+                raise HTTPException(status_code=401, detail="Invalid session")
+            emergent_user = emergent_resp.json()
+        except httpx.RequestError:
+            raise HTTPException(status_code=503, detail="Auth service unavailable")
+
+    email = emergent_user.get("email", "").lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="No email in session")
+
+    user_doc = await db.users.find_one({"email": email})
+    
+    if not user_doc:
+        user_id = f"user_{uuid.uuid4().hex[:12]}"
+        user_doc = {
+            "user_id": user_id,
+            "email": email,
+            "name": emergent_user.get("name", email.split("@")[0]),
+            "picture": emergent_user.get("picture", ""),
+            "role": "Teacher",
+            "is_premium": False,
+            "free_used": 0,
+            "bonus_credits": 0,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await db.users.insert_one(user_doc)
+
+    session_token = str(uuid.uuid4())
+    expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+    
+    await db.user_sessions.insert_one({
+        "session_id": str(uuid.uuid4()),
+        "user_id": user_doc["user_id"],
+        "session_token": session_token,
+        "expires_at": expires_at.isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+
+    response.set_cookie(
+        key="session_token", 
+        value=session_token, 
+        httponly=True, 
+        secure=True, 
+        samesite="none", 
+        max_age=7*24*3600, 
+        path="/"
+    )
+    
+    user_doc.pop("_id", None)
+    return {"user": user_doc, "session_token": session_token}
+
 @api_router.get("/auth/me")
 async def auth_me(user: User = Depends(require_user)):
     user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
@@ -220,6 +287,7 @@ async def update_profile(payload: ProfileUpdateRequest, user: User = Depends(req
     updated_user = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
     return updated_user
 
+# ========== APP ROUTES ==========
 @api_router.get("/library/feed")
 async def get_public_library(level: Optional[str] = None):
     query = {"is_public": True}
@@ -248,7 +316,7 @@ async def generate_worksheet(
 
     try:
         model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash", # FIXED: Model name updated
+            model_name="gemini-1.5-flash", 
             system_instruction="You are a professional ESL curriculum designer...",
             generation_config={"response_mime_type": "application/json", "temperature": 0.8},
         )
@@ -270,8 +338,6 @@ async def generate_worksheet(
         await db.users.update_one({"user_id": user.user_id}, {"$inc": {"free_used": 1}})
 
     return doc
-
-# ... (Include other worksheets routes like /list and /get here) ...
 
 # [FIX] MOVED ROUTER INCLUSION ABOVE MIDDLEWARE
 app.include_router(api_router)
