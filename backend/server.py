@@ -83,6 +83,7 @@ class Worksheet(BaseModel):
     skill: str
     topic: str
     content: Dict[str, Any]
+    is_public: bool = True  # NEW: Quality control flag for the library
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class FixWorksheetRequest(BaseModel):
@@ -445,6 +446,7 @@ async def generate_worksheet(
     doc = {
         "worksheet_id": worksheet_id, "user_id": user.user_id if user else None, "title": content.get("title", req.topic),
         "level": req.level, "cefr": req.cefr, "skill": req.skill, "topic": req.topic, "content": content,
+        "is_public": True, # NEW: Automatically flagged for the public library!
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.worksheets.insert_one(doc)
@@ -488,11 +490,29 @@ async def fix_worksheet(req: FixWorksheetRequest, user: Optional[User] = Depends
     await db.worksheets.update_one(
         query,
         {
-            "$set": {"content": content, "status": "needs_review"},
+            "$set": {
+                "content": content, 
+                "status": "needs_review",
+                "is_public": False # NEW: Removes bad worksheets from the public library
+            },
             "$push": {"revisions": {"feedback": req.feedback, "timestamp": datetime.now(timezone.utc).isoformat()}}
         }
     )
     return {"success": True, "content": content}
+
+# NEW ROUTE: Public Library Feed
+@api_router.get("/library/feed")
+async def get_public_library(level: Optional[str] = None):
+    # Search MongoDB for worksheets flagged as public
+    query = {"is_public": True}
+    
+    # If the user clicked "Kindergarten" on the menu, filter the results
+    if level:
+        query["level"] = level
+        
+    # Grab the 50 freshest worksheets to display on the public feed
+    docs = await db.worksheets.find(query, {"_id": 0}).sort("created_at", -1).limit(50).to_list(50)
+    return docs
 
 @api_router.get("/worksheets")
 async def list_worksheets(user: User = Depends(require_user)):
