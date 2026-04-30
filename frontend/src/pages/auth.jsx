@@ -45,7 +45,8 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, setUser: refreshUser, startLogin, logout }}>
+    // Exposing the refresh callback as checkAuth
+    <AuthContext.Provider value={{ user, loading, checkAuth: refreshUser, startLogin, logout }}>
       {children}
     </AuthContext.Provider>
   );
