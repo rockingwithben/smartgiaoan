@@ -59,6 +59,10 @@ class User(BaseModel):
     free_used: int = 0
     bonus_credits: int = 0
     password_hash: Optional[str] = None
+    # NEW: Teacher Profile Data
+    teaching_level: Optional[str] = None
+    class_size: Optional[str] = None
+    focus_area: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class WorksheetRequest(BaseModel):
@@ -89,6 +93,11 @@ class FixWorksheetRequest(BaseModel):
 class EmailAuthRequest(BaseModel):
     email: str
     password: str
+
+class ProfileUpdateRequest(BaseModel):
+    teaching_level: str
+    class_size: str
+    focus_area: str
 
 # ========== AUTH HELPERS ==========
 async def get_current_user_optional(
@@ -224,6 +233,20 @@ async def auth_logout(response: Response, session_token: Optional[str] = Cookie(
     response.delete_cookie("session_token", path="/")
     return {"ok": True}
 
+@api_router.put("/auth/profile")
+async def update_profile(payload: ProfileUpdateRequest, user: User = Depends(require_user)):
+    """Save the teacher's classroom profile to MongoDB"""
+    await db.users.update_one(
+        {"user_id": user.user_id},
+        {"$set": {
+            "teaching_level": payload.teaching_level,
+            "class_size": payload.class_size,
+            "focus_area": payload.focus_area
+        }}
+    )
+    updated_user = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    return updated_user
+
 @api_router.get("/auth/export")
 async def auth_export(user: User = Depends(require_user)):
     user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
@@ -349,7 +372,7 @@ JSON SCHEMA (return EXACTLY this shape)
 }
 """
 
-def build_user_prompt(req: WorksheetRequest) -> str:
+def build_user_prompt(req: WorksheetRequest, user_doc: dict = None) -> str:
     exam_map = {
         "Kindergarten": "YLE Pre-Starters",
         "Primary": "YLE Starters / Movers / Flyers",
@@ -358,6 +381,12 @@ def build_user_prompt(req: WorksheetRequest) -> str:
     }
     exam = exam_map.get(req.level, "Cambridge")
     grammar = req.grammar_focus or "appropriate to the level and topic"
+    
+    # INVISIBLE MAGIC: Injecting the teacher's profile directly into the AI's brain
+    profile_context = ""
+    if user_doc and user_doc.get("teaching_level"):
+        profile_context = f"\nTEACHER PROFILE CONTEXT: This class is for {user_doc.get('teaching_level')} students. The class size is {user_doc.get('class_size')}, focusing heavily on {user_doc.get('focus_area')}. Scale the activity formats, font sizes, and instructions to perfectly match this exact demographic."
+
     return f"""TASK — generate a flawless, classroom-ready, FUN worksheet.
 
 CEFR Level: {req.cefr}
@@ -367,6 +396,7 @@ Skill focus: {req.skill}
 Topic: "{req.topic}"
 Target grammar: "{grammar}"
 Target total questions: {req.num_questions} (you may exceed to satisfy the 3-page minimum and level-mapped range).
+{profile_context}
 
 Apply the dynamic persona / tone rules from your system instructions for this CEFR level.
 Strict JSON. Vietnamese localisation throughout. Make it fun enough that students forget it's a worksheet."""
@@ -393,13 +423,19 @@ async def generate_worksheet(
         if user.free_used >= free_total:
             raise HTTPException(status_code=402, detail="Free quota exceeded. Upgrade to Premium or watch an ad.")
 
+    # Grab the freshest user doc so we can inject their profile into the prompt
+    fresh_user = None
+    if user:
+        fresh_user = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+
     try:
         model = genai.GenerativeModel(
             model_name="gemini-2.5-flash",
             system_instruction=WORKSHEET_SYSTEM_PROMPT,
             generation_config={"response_mime_type": "application/json", "temperature": 0.8},
         )
-        result = model.generate_content(build_user_prompt(req))
+        # PASS THE USER DOC HERE
+        result = model.generate_content(build_user_prompt(req, fresh_user))
         content = json.loads(result.text)
     except Exception as e:
         logger.exception("Gemini generation failed")
@@ -415,10 +451,6 @@ async def generate_worksheet(
 
     if user and not user.is_premium and not is_admin:
         await db.users.update_one({"user_id": user.user_id}, {"$inc": {"free_used": 1}})
-
-    fresh_user = None
-    if user:
-        fresh_user = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
 
     return {"worksheet_id": worksheet_id, "title": doc["title"], "level": req.level, "cefr": req.cefr, "skill": req.skill, "topic": req.topic, "content": content, "user": fresh_user}
 
