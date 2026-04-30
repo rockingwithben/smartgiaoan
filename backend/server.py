@@ -29,6 +29,8 @@ if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
 app = FastAPI(title="SmartGiaoAn API")
+
+# 1. Define router and routes
 api_router = APIRouter(prefix="/api")
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -339,14 +341,14 @@ async def generate_worksheet(
 
     return doc
 
-# [FIX] MOVED ROUTER INCLUSION ABOVE MIDDLEWARE
+# 2. Include router FIRST
 app.include_router(api_router)
 
 @app.get("/")
 async def root():
     return {"app": "SmartGiaoAn", "status": "ok"}
 
-# [FIX] UPDATED CORS TO MATCH PRODUCTION DOMAIN
+# 3. Add middleware AFTER
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
