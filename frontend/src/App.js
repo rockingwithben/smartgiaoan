@@ -23,23 +23,28 @@ import WorksheetView from './pages/WorksheetView';
 import { CookieConsent } from './components/CookieConsent';
 import './App.css';
 
+// Intercepts the Emergent Google OAuth redirect hash (#session_id=...)
+// before any route renders, and navigates to /auth/callback cleanly.
+// This prevents the hash check from running on every render cycle.
 function OAuthGate({ children }) {
-  const location = useLocation();
-  const navigate = useNavigate();
+  var location = useLocation();
+  var navigate = useNavigate();
 
-  useEffect(() => {
+  useEffect(function() {
     if (location.hash && location.hash.includes('session_id=')) {
       navigate('/auth/callback' + location.hash, { replace: true });
     }
   }, [location.hash, navigate]);
 
-  if (location.hash && location.hash.includes('session_id=')) return null;
+  if (location.hash && location.hash.includes('session_id=')) {
+    return null;
+  }
 
   return children;
 }
 
 function AppRouter() {
-  const navigate = useNavigate();
+  var navigate = useNavigate();
 
   return (
     <OAuthGate>
@@ -54,7 +59,9 @@ function AppRouter() {
           element={
             <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
               <AuthModal
-                onLoginSuccess={() => navigate('/dashboard', { replace: true })}
+                onLoginSuccess={function() {
+                  navigate('/dashboard', { replace: true });
+                }}
               />
             </div>
           }
@@ -78,6 +85,10 @@ function AppRouter() {
   );
 }
 
+// Provider order matters:
+// I18nProvider  - no router dependency, outermost
+// BrowserRouter - must wrap everything using router hooks
+// AuthProvider  - uses window.location, must be inside BrowserRouter
 function App() {
   return (
     <I18nProvider>
