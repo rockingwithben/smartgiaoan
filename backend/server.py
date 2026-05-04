@@ -59,6 +59,7 @@ FREE_QUOTA = int(os.environ.get('FREE_QUOTA', '3'))
 # OPTIONS requests return 404 and Google Login breaks.
 # ============================================================
 app = FastAPI(title="SmartGiaoAn API", version="2.0.0")
+# STEP 1 - router defined FIRST
 api_router = APIRouter(prefix="/api")
 
 # ========== PASSWORD HASHING ==========
@@ -631,13 +632,13 @@ async def admin_grant_premium(user_id: str, admin: User = Depends(require_admin)
     return {"ok": True, "user_id": user_id}
 
 # ============================================================
-# STEP 4 - include router BEFORE middleware
-# THIS IS THE CRITICAL FIX FOR CORS / GOOGLE LOGIN
+# STEP 3 - include router BEFORE middleware
+# CRITICAL: This order makes CORS apply to all routes
 # ============================================================
 app.include_router(api_router)
 
 # ============================================================
-# STEP 5 - CORS middleware AFTER router include
+# STEP 4 - CORS middleware LAST
 # ============================================================
 app.add_middleware(
     CORSMiddleware,
