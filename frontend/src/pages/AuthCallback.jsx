@@ -5,8 +5,7 @@ import { useAuth } from '../lib/auth';
 
 export default function AuthCallback() {
   const navigate = useNavigate();
-  // Destructuring checkAuth instead of setUser
-  const { checkAuth } = useAuth(); 
+  const { checkAuth } = useAuth();
   const hasProcessed = useRef(false);
 
   useEffect(() => {
@@ -15,26 +14,22 @@ export default function AuthCallback() {
 
     const hash = window.location.hash || '';
     const m = hash.match(/session_id=([^&]+)/);
-    
+
     if (!m) {
       navigate('/');
       return;
     }
-    
+
     const session_id = decodeURIComponent(m[1]);
-    
+
     (async () => {
       try {
         const res = await exchangeSession(session_id);
-        
+
         if (res.user) {
-          // This will hit /auth/me with the new cookie to securely sync state
-          await checkAuth(); 
-          
-          // Clean the ugly hash out of the URL bar
+          await checkAuth();
           window.history.replaceState(null, '', window.location.pathname);
-          
-          // SMART ROUTING: 
+
           if (!res.user.teaching_level || !res.user.role) {
             navigate('/profile', { replace: true });
           } else {
@@ -42,7 +37,7 @@ export default function AuthCallback() {
           }
         }
       } catch (e) {
-        console.error("Auth callback failed:", e);
+        console.error('Auth callback failed:', e);
         navigate('/login', { replace: true });
       }
     })();
@@ -50,11 +45,9 @@ export default function AuthCallback() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
-      <div className="text-center p-8 bg-white rounded-2xl shadow-sm border border-gray-100 max-w-sm w-full">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-6"></div>
-        <div className="font-extrabold text-2xl text-gray-900">Authenticating...</div>
-        <div className="text-sm text-gray-500 mt-2 font-medium">Securing your session.</div>
-      </div>
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mb-4" />
+      <h2 className="text-xl font-semibold text-gray-900">Authenticating...</h2>
+      <p className="text-gray-500 mt-2">Securing your session.</p>
     </div>
   );
 }
