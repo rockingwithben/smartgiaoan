@@ -1,388 +1,191 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
-import { toast } from 'sonner';
-
-import { Navbar } from '../components/Navbar';
-import { Footer } from '../components/Footer';
-import { AdSlot } from '../components/AdSlot';
-import { WorksheetView } from '../components/WorksheetView';
-import { PaywallModal, UpgradeModal } from '../components/PaywallModal';
-import { RewardedAdModal } from '../components/RewardedAdModal';
-
-import { useI18n } from '../lib/i18n';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { generateWorksheet, listWorksheets } from '../lib/api';
+import { toast } from 'sonner';
+import { Loader2, Sparkles, FileText, Crown } from 'lucide-react';
+import PaywallModal from '../components/PaywallModal';
+import RewardedAdModal from '../components/RewardedAdModal';
 
-const ANON_QUOTA = 3;
-
-function getAnonUsed() {
-  try { return parseInt(localStorage.getItem('sga_anon_used') || '0', 10); }
-  catch { return 0; }
-}
-function setAnonUsed(n) {
-  try { localStorage.setItem('sga_anon_used', String(n)); } catch {}
-}
+const LEVELS = ['Kindergarten', 'Primary 1-2', 'Primary 3-4', 'Primary 5-6', 'Secondary', 'IELTS'];
+const CEFR = ['Pre-A1', 'A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
+const SKILLS = ['Reading', 'Listening', 'Writing', 'Grammar', 'Vocabulary', 'Speaking'];
 
 export default function Dashboard() {
-  const { t, lang } = useI18n();
-  const { user, startLogin, refresh } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
-  const paperRef = useRef(null);
-
+  const [worksheets, setWorksheets] = useState([]);
+  const [generating, setGenerating] = useState(false);
+  const [showPaywall, setShowPaywall] = useState(false);
+  const [showAd, setShowAd] = useState(false);
+  const [adTier, setAdTier] = useState(15);
   const [form, setForm] = useState({
-    level: 'Primary',
+    level: 'Primary 3-4',
     cefr: 'A2',
-    skill: 'reading',
+    skill: 'Reading',
     topic: '',
     num_questions: 24,
     grammar_focus: '',
   });
 
-  const [generating, setGenerating] = useState(false);
-  const [worksheet, setWorksheet] = useState(null);
-  const [history, setHistory] = useState([]);
-  const [error, setError] = useState('');
-  const [paywall, setPaywall] = useState(false);
-  const [upgrade, setUpgrade] = useState(false);
-  const [rewarded, setRewarded] = useState({ open: false, tier: 'medium' });
-
   useEffect(() => {
-    if (location.hash === '#upgrade') setUpgrade(true);
-  }, [location.hash]);
+    if (!authLoading && !user) {
+      navigate('/login');
+      return;
+    }
+    loadWorksheets();
+  }, [user, authLoading, navigate]);
 
-  useEffect(() => {
-    if (user) {
-      listWorksheets()
-        .then(setHistory)
-        .catch((err) => console.error('Failed to load history:', err));
+  const loadWorksheets = useCallback(async () => {
+    if (!user) return;
+    try {
+      const docs = await listWorksheets();
+      setWorksheets(docs);
+    } catch (e) {
+      console.error('Failed to load worksheets', e);
     }
   }, [user]);
 
-  const remaining = (() => {
-    if (!user) return Math.max(0, ANON_QUOTA - getAnonUsed());
-    if (user.is_premium) return Infinity;
-    return Math.max(0, 3 + (user.bonus_credits || 0) - (user.free_used || 0));
-  })();
+  const remaining = user
+    ? user.is_premium
+      ? Infinity
+      : Math.max(0, (3 + (user.bonus_credits || 0)) - (user.free_used || 0))
+    : 0;
 
-  const onChange = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
-
-  const submit = async (e) => {
+  const handleGenerate = async (e) => {
     e.preventDefault();
-    setError('');
-    if (!form.topic.trim()) return;
-
-    if (!user) {
-      if (getAnonUsed() >= ANON_QUOTA) {
-        if (!window.confirm(
-          lang === 'vi'
-            ? 'Ban da dung het luot mien phi. Dang nhap Google de tiep tuc?'
-            : 'You\'ve used your free worksheets on this browser. Sign in to continue?'
-        )) return;
-        startLogin();
-        return;
-      }
-    } else if (!user.is_premium) {
-      const left = 3 + (user.bonus_credits || 0) - (user.free_used || 0);
-      if (left <= 0) {
-        setPaywall(true);
-        return;
-      }
+    if (!form.topic.trim()) {
+      toast.error('Please enter a topic');
+      return;
     }
-
+    setGenerating(true);
     try {
-      setGenerating(true);
-      const data = await generateWorksheet(form);
-      setWorksheet(data);
-
-      // Always refresh user to get updated quota counts
-      await refresh();
-
-      if (!user) setAnonUsed(getAnonUsed() + 1);
-      // Refresh history list silently
-      if (user) listWorksheets().then(setHistory).catch(() => {});
-
-      toast.success(
-        lang === 'vi' ? 'Bai tap da san sang!' : 'Worksheet ready!',
-        { description: data.title }
-      );
+      const ws = await generateWorksheet(form);
+      toast.success('Worksheet generated!');
+      navigate(`/worksheet/${ws.worksheet_id}`);
     } catch (err) {
-      const status = err?.response?.status;
-      if (status === 402) {
-        setPaywall(true);
+      if (err.response?.status === 402) {
+        setShowPaywall(true);
       } else {
-        const msg = err?.response?.data?.detail || err.message || 'Failed to generate content.';
-        setError(msg);
-        toast.error(
-          lang === 'vi' ? 'Khong the tao bai tap' : 'Generation Failed',
-          { description: msg }
-        );
+        toast.error(err.response?.data?.detail || 'Generation failed');
       }
     } finally {
       setGenerating(false);
     }
   };
 
-  const handlePrint = () => window.print();
-
-  const handlePdf = async () => {
-    if (!paperRef.current) return;
-    try {
-      toast.info(lang === 'vi' ? 'Dang tao PDF...' : 'Generating PDF...', { duration: 2000 });
-      const canvas = await html2canvas(paperRef.current, {
-        scale: 2,
-        backgroundColor: '#ffffff',
-        useCORS: true,
-      });
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF({ orientation: 'p', unit: 'pt', format: 'a4' });
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = pdf.internal.pageSize.getHeight();
-      const margin = 20;
-      const imgWidth = pdfWidth - margin * 2;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
-      let heightLeft = imgHeight;
-      pdf.addImage(imgData, 'PNG', margin, margin, imgWidth, imgHeight);
-      heightLeft -= pdfHeight;
-
-      while (heightLeft > 0) {
-        const position = heightLeft - imgHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
-        heightLeft -= pdfHeight;
-      }
-
-      const safeTitle = (worksheet?.title || 'worksheet')
-        .replace(/[^a-z0-9]+/gi, '_')
-        .toLowerCase();
-      pdf.save(`smartgiaoan_${safeTitle}.pdf`);
-      toast.success(lang === 'vi' ? 'Da tai xuong PDF' : 'PDF Downloaded');
-    } catch (err) {
-      console.error(err);
-      toast.error(lang === 'vi' ? 'Loi tao PDF' : 'Could not create PDF');
-    }
+  const handleWatchAd = (tier) => {
+    setAdTier(tier);
+    setShowPaywall(false);
+    setShowAd(true);
   };
 
-  const onWatchAd = (tier) => {
-    setPaywall(false);
-    if (!user) { startLogin(); return; }
-    setRewarded({ open: true, tier });
+  const handleAdGranted = () => {
+    window.location.reload();
   };
 
-  const onRewardClaimed = async () => {
-    await refresh();
-  };
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 size={32} className="animate-spin text-indigo-600" />
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen flex flex-col bg-background font-sans">
-      <Navbar />
-
-      {/* Quota bar */}
-      <div className="border-b border-border bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-6 lg:px-10 py-3 flex flex-wrap items-center justify-between gap-3 text-sm">
-          <div className="flex items-center gap-3">
-            <span className="uppercase tracking-wider text-xs font-bold text-gray-500">{t('free_left')}</span>
-            <span className="font-mono font-black text-lg flex items-center gap-2" data-testid="free-counter">
-              {remaining === Infinity ? 'Unlimited' : remaining}
-              <span className={`w-2 h-2 rounded-full inline-block ${remaining === Infinity ? 'bg-green-500' : remaining > 0 ? 'bg-black' : 'bg-red-500'}`} />
-            </span>
-            {user?.is_premium && (
-              <span className="text-[10px] uppercase tracking-widest font-black text-red-600 border border-red-600 px-2 py-0.5 rounded bg-red-50">
-                Premium
-              </span>
-            )}
-          </div>
-          {!user?.is_premium && (
-            <button
-              onClick={() => setUpgrade(true)}
-              className="text-sm text-red-600 hover:text-red-800 hover:underline font-bold transition-colors"
-            >
-              {t('paywall_upgrade')} →
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div className="max-w-7xl w-full mx-auto px-6 lg:px-10 py-8 grid grid-cols-1 lg:grid-cols-12 gap-8 flex-1">
-
-        {/* Sidebar */}
-        <aside className="lg:col-span-4 xl:col-span-3 space-y-6">
-          <div className="bg-white border border-border p-6 rounded-2xl shadow-sm">
-            <p className="uppercase tracking-widest text-xs font-bold text-red-600 mb-4">{t('new_worksheet')}</p>
-            <form onSubmit={submit} className="space-y-4">
-
-              <Field label={t('form_level')}>
-                <select className="form-input w-full p-3 bg-gray-50 border border-gray-200 rounded-xl" value={form.level} onChange={onChange('level')}>
-                  {['Kindergarten', 'Primary', 'Secondary', 'IELTS'].map((l) => (
-                    <option key={l} value={l}>{t(`levels.${l}`)}</option>
-                  ))}
-                </select>
-              </Field>
-
-              <Field label={t('form_cefr')}>
-                <select className="form-input w-full p-3 bg-gray-50 border border-gray-200 rounded-xl" value={form.cefr} onChange={onChange('cefr')}>
-                  {['A1', 'A2', 'B1', 'B2', 'C1', 'C2'].map((l) => (
-                    <option key={l} value={l}>{l}</option>
-                  ))}
-                </select>
-              </Field>
-
-              <Field label={t('form_skill')}>
-                <select className="form-input w-full p-3 bg-gray-50 border border-gray-200 rounded-xl" value={form.skill} onChange={onChange('skill')}>
-                  {['reading', 'writing', 'grammar', 'vocabulary', 'listening'].map((s) => (
-                    <option key={s} value={s}>{t(`skills.${s}`)}</option>
-                  ))}
-                </select>
-              </Field>
-
-              <Field label={t('form_topic')}>
-                <input
-                  type="text"
-                  className="form-input w-full p-3 bg-gray-50 border border-gray-200 rounded-xl"
-                  placeholder={t('form_topic_placeholder')}
-                  value={form.topic}
-                  onChange={onChange('topic')}
-                  required
-                />
-              </Field>
-
-              <Field label={lang === 'vi' ? 'Trong tam ngu phap (Tuy chon)' : 'Grammar focus (Optional)'}>
-                <input
-                  type="text"
-                  className="form-input w-full p-3 bg-gray-50 border border-gray-200 rounded-xl"
-                  placeholder={lang === 'vi' ? 'VD: qua khu don...' : 'e.g. past simple...'}
-                  value={form.grammar_focus}
-                  onChange={onChange('grammar_focus')}
-                />
-              </Field>
-
-              <Field label={t('form_questions')}>
-                <input
-                  type="number"
-                  min={16}
-                  max={40}
-                  className="form-input w-full p-3 bg-gray-50 border border-gray-200 rounded-xl"
-                  value={form.num_questions}
-                  onChange={(e) => setForm((f) => ({ ...f, num_questions: Math.max(16, Math.min(40, +e.target.value || 24)) }))}
-                />
-                <p className="text-[11px] text-gray-400 mt-1 font-medium">16 minimum, 40 maximum</p>
-              </Field>
-
-              {error && (
-                <div className="text-xs font-bold text-red-600 border border-red-200 px-3 py-2 bg-red-50 rounded-lg">
-                  {error}
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={generating}
-                className={`w-full font-bold p-4 rounded-xl transition-all shadow-md mt-2 flex justify-center items-center ${
-                  generating ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-black text-white hover:bg-gray-800'
-                }`}
-              >
-                {generating ? (
-                  <span className="flex items-center">
-                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                    </svg>
-                    {t('generating')}
-                  </span>
-                ) : (
-                  <>{String.fromCodePoint(0x2728)} {t('generate')}</>
-                )}
-              </button>
-            </form>
-          </div>
-
-          {!user?.is_premium && <AdSlot size="sidebar" testId="sidebar-ad" />}
-
-          {user && (
-            <div className="bg-white border border-border p-6 rounded-2xl shadow-sm">
-              <p className="uppercase tracking-widest text-xs font-bold text-gray-500 mb-4">{t('worksheet_history')}</p>
-              {history.length === 0 ? (
-                <div className="text-center py-6 bg-gray-50 rounded-xl border border-dashed border-gray-300">
-                  <p className="text-sm font-medium text-gray-500">{t('no_history')}</p>
-                </div>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-6xl mx-auto px-4 py-8">
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Workspace</h1>
+            <p className="text-gray-500 text-sm mt-1">
+              {user?.is_premium ? (
+                <span className="inline-flex items-center gap-1 text-amber-600 font-medium">
+                  <Crown size={14} /> Premium — Unlimited
+                </span>
               ) : (
-                <ul className="space-y-1 max-h-[300px] overflow-y-auto pr-2">
-                  {history.map((w) => (
-                    <li key={w.worksheet_id}>
-                      <button
-                        onClick={() => setWorksheet(w)}
-                        className="text-left w-full hover:bg-gray-50 px-3 py-3 rounded-xl transition-colors border border-transparent hover:border-gray-200 group"
-                      >
-                        <div className="font-bold text-gray-900 text-sm truncate group-hover:text-red-600 transition-colors">{w.title}</div>
-                        <div className="text-xs font-medium text-gray-500 mt-1 uppercase tracking-wider">
-                          {w.level} · {w.cefr} · {w.skill}
-                        </div>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+                <span>Free left: <span className={`font-bold ${remaining === 0 ? 'text-red-500' : 'text-gray-900'}`}>
+                  {remaining === Infinity ? 'Unlimited' : remaining}
+                </span></span>
               )}
-            </div>
-          )}
-        </aside>
+            </p>
+          </div>
+        </div>
 
-        {/* Main panel */}
-        <main className="lg:col-span-8 xl:col-span-9 space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-white p-4 rounded-2xl border border-gray-200 shadow-sm gap-4">
-            <h1 className="font-serif font-bold text-2xl text-gray-900 truncate">
-              {worksheet?.title || (lang === 'vi' ? 'Khu Vuc Lam Viec' : 'Workspace')}
-            </h1>
-            {worksheet && (
-              <div className="flex gap-2 flex-shrink-0">
-                <button onClick={handlePrint} className="bg-gray-100 hover:bg-gray-200 text-black font-bold py-2 px-4 rounded-lg transition-colors text-sm border border-gray-300">
-                  {String.fromCodePoint(0x1F5A8)} {t('print')}
+        <div className="grid lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-1">
+            <div className="bg-white rounded-2xl border border-gray-200 p-6 sticky top-4">
+              <h2 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+                <Sparkles size={18} /> Generate Worksheet
+              </h2>
+              <form onSubmit={handleGenerate} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Level</label>
+                  <select value={form.level} onChange={e => setForm(f => ({ ...f, level: e.target.value }))} className="w-full border border-gray-200 rounded-lg p-2.5 text-sm">
+                    {LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">CEFR</label>
+                  <select value={form.cefr} onChange={e => setForm(f => ({ ...f, cefr: e.target.value }))} className="w-full border border-gray-200 rounded-lg p-2.5 text-sm">
+                    {CEFR.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Skill</label>
+                  <select value={form.skill} onChange={e => setForm(f => ({ ...f, skill: e.target.value }))} className="w-full border border-gray-200 rounded-lg p-2.5 text-sm">
+                    {SKILLS.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Topic</label>
+                  <input type="text" value={form.topic} onChange={e => setForm(f => ({ ...f, topic: e.target.value }))} placeholder="e.g. Ordering food at a restaurant" className="w-full border border-gray-200 rounded-lg p-2.5 text-sm" required />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Questions</label>
+                  <input type="number" min={5} max={50} value={form.num_questions} onChange={e => setForm(f => ({ ...f, num_questions: parseInt(e.target.value) || 24 }))} className="w-full border border-gray-200 rounded-lg p-2.5 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Grammar Focus (optional)</label>
+                  <input type="text" value={form.grammar_focus} onChange={e => setForm(f => ({ ...f, grammar_focus: e.target.value }))} placeholder="e.g. Present Perfect" className="w-full border border-gray-200 rounded-lg p-2.5 text-sm" />
+                </div>
+                <button type="submit" disabled={generating} className="w-full bg-black text-white py-3 rounded-xl font-semibold hover:bg-gray-800 transition disabled:opacity-50 flex items-center justify-center gap-2">
+                  {generating && <Loader2 size={18} className="animate-spin" />}
+                  {generating ? 'Generating...' : 'Generate Worksheet'}
                 </button>
-                <button onClick={handlePdf} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors text-sm shadow-sm">
-                  {String.fromCodePoint(0x2B07)} {t('download_pdf')}
-                </button>
+              </form>
+            </div>
+          </div>
+
+          <div className="lg:col-span-2">
+            <h2 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+              <FileText size={18} /> My Worksheets ({worksheets.length})
+            </h2>
+            {worksheets.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center">
+                <p className="text-gray-400">No worksheets yet. Generate your first one!</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {worksheets.map(ws => (
+                  <button key={ws.worksheet_id} onClick={() => navigate(`/worksheet/${ws.worksheet_id}`)} className="w-full bg-white rounded-xl border border-gray-200 p-4 text-left hover:border-indigo-500 hover:shadow-sm transition">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="font-semibold text-gray-900">{ws.title}</h3>
+                        <p className="text-sm text-gray-500">{ws.level} · {ws.cefr} · {ws.skill}</p>
+                      </div>
+                      <span className="text-xs text-gray-400">{new Date(ws.created_at).toLocaleDateString()}</span>
+                    </div>
+                  </button>
+                ))}
               </div>
             )}
           </div>
-
-          {worksheet ? (
-            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <WorksheetView
-                data={worksheet}
-                paperRef={paperRef}
-                onRegenerate={(newContent) => setWorksheet({ ...worksheet, content: newContent })}
-              />
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center h-[600px] bg-white rounded-2xl border border-gray-200 border-dashed">
-              <div className="text-6xl mb-4 opacity-50">{String.fromCodePoint(0x1F4DD)}</div>
-              <h3 className="text-xl font-bold text-gray-700">Ready to create?</h3>
-              <p className="text-gray-500 font-medium mt-2 max-w-sm text-center">
-                Fill out the settings on the left and click generate to build your first intelligent worksheet.
-              </p>
-            </div>
-          )}
-
-          {!user?.is_premium && worksheet && <AdSlot size="leaderboard" testId="bottom-ad" />}
-        </main>
+        </div>
       </div>
 
-      <PaywallModal open={paywall} onClose={() => setPaywall(false)} onWatchAd={onWatchAd} />
-      <UpgradeModal open={upgrade} onClose={() => { setUpgrade(false); navigate('/dashboard', { replace: true }); }} />
-      <RewardedAdModal open={rewarded.open} tier={rewarded.tier} onClose={() => setRewarded({ ...rewarded, open: false })} onClaimed={onRewardClaimed} />
-
-      <Footer />
+      {showPaywall && <PaywallModal onClose={() => setShowPaywall(false)} onWatchAd={handleWatchAd} />}
+      {showAd && <RewardedAdModal tier={adTier} onClose={() => setShowAd(false)} onGranted={handleAdGranted} />}
     </div>
-  );
-}
-
-function Field({ label, children }) {
-  return (
-    <label className="block">
-      <span className="uppercase tracking-widest text-[10px] font-bold text-gray-500 mb-1.5 block">{label}</span>
-      <div>{children}</div>
-    </label>
   );
 }
