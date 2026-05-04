@@ -49,7 +49,6 @@ export function AuthProvider({ children }) {
     window.location.href = '/';
   }, []);
 
-  // CRITICAL FIX: Added value prop with all auth functions
   return (
     <AuthContext.Provider value={{ user, setUser, loading, startLogin, logout, refreshUser, checkAuth }}>
       {children}
