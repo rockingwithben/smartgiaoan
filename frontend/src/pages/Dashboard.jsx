@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { generateWorksheet, listWorksheets } from '../lib/api';
@@ -16,6 +16,8 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const [worksheets, setWorksheets] = useState([]);
   const [generating, setGenerating] = useState(false);
+  const [sortOrder, setSortOrder] = useState('newest');
+  const [levelFilter, setLevelFilter] = useState('All levels');
   const [showPaywall, setShowPaywall] = useState(false);
   const [showAd, setShowAd] = useState(false);
   const [adTier, setAdTier] = useState(15);
@@ -83,6 +85,19 @@ export default function Dashboard() {
   const handleAdGranted = () => {
     window.location.reload();
   };
+
+
+  const visibleWorksheets = useMemo(() => {
+    const filtered = levelFilter === 'All levels'
+      ? worksheets
+      : worksheets.filter((ws) => ws.level === levelFilter);
+    const sorted = [...filtered].sort((a, b) => {
+      const aTs = new Date(a.created_at || 0).getTime();
+      const bTs = new Date(b.created_at || 0).getTime();
+      return sortOrder === 'oldest' ? aTs - bTs : bTs - aTs;
+    });
+    return sorted;
+  }, [worksheets, levelFilter, sortOrder]);
 
   if (authLoading) {
     return (
@@ -159,15 +174,25 @@ export default function Dashboard() {
 
           <div className="lg:col-span-2">
             <h2 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-              <FileText size={18} /> My Worksheets ({worksheets.length})
+              <FileText size={18} /> My Worksheets ({visibleWorksheets.length})
             </h2>
-            {worksheets.length === 0 ? (
+            <div className="flex flex-wrap items-center gap-2 mb-4">
+              <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="border border-gray-200 rounded-lg p-2 text-sm bg-white">
+                <option value="newest">Newest first</option>
+                <option value="oldest">Oldest first</option>
+              </select>
+              <select value={levelFilter} onChange={(e) => setLevelFilter(e.target.value)} className="border border-gray-200 rounded-lg p-2 text-sm bg-white">
+                <option value="All levels">All levels</option>
+                {LEVELS.map(level => <option key={level} value={level}>{level}</option>)}
+              </select>
+            </div>
+            {visibleWorksheets.length === 0 ? (
               <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center">
                 <p className="text-gray-400">No worksheets yet. Generate your first one!</p>
               </div>
             ) : (
               <div className="space-y-3">
-                {worksheets.map(ws => (
+                {visibleWorksheets.map(ws => (
                   <button key={ws.worksheet_id} onClick={() => navigate(`/worksheet/${ws.worksheet_id}`)} className="w-full bg-white rounded-xl border border-gray-200 p-4 text-left hover:border-indigo-500 hover:shadow-sm transition">
                     <div className="flex items-center justify-between">
                       <div>

@@ -59,6 +59,7 @@ FREE_QUOTA = int(os.environ.get('FREE_QUOTA', '3'))
 # OPTIONS requests return 404 and Google Login breaks.
 # ============================================================
 app = FastAPI(title="SmartGiaoAn API", version="2.0.0")
+# STEP 1 - router defined FIRST
 api_router = APIRouter(prefix="/api")
 
 # ========== PASSWORD HASHING ==========
@@ -427,6 +428,10 @@ async def delete_account(user: User = Depends(require_user), response: Response 
 # ============================================================
 # WORKSHEET ROUTES
 # ============================================================
+@api_router.get("/")
+async def api_root():
+    return {"app": "SmartGiaoAn", "status": "ok", "version": "2.0.0"}
+
 
 @api_router.post("/worksheets/generate")
 async def generate_worksheet(
@@ -499,10 +504,14 @@ async def generate_worksheet(
 
 @api_router.get("/worksheets")
 async def list_worksheets(user: User = Depends(require_user)):
-    docs = await db.worksheets.find(
-        {"user_id": user.user_id}, {"_id": 0}
-    ).sort("created_at", -1).limit(100).to_list(100)
-    return docs
+    try:
+        docs = await db.worksheets.find(
+            {"user_id": user.user_id}, {"_id": 0}
+        ).sort("created_at", -1).limit(100).to_list(100)
+        return docs
+    except Exception:
+        logger.exception("Failed to list worksheets")
+        raise HTTPException(status_code=503, detail="Database unavailable")
 
 
 @api_router.get("/worksheets/{worksheet_id}")
@@ -548,10 +557,14 @@ async def get_public_library(
     if skill:
         query["skill"] = skill
     limit = min(limit, 100)
-    docs = await db.worksheets.find(
-        query, {"_id": 0, "content": 0}
-    ).sort("created_at", -1).limit(limit).to_list(limit)
-    return docs
+    try:
+        docs = await db.worksheets.find(
+            query, {"_id": 0, "content": 0}
+        ).sort("created_at", -1).limit(limit).to_list(limit)
+        return docs
+    except Exception:
+        logger.exception("Failed to fetch public library feed")
+        raise HTTPException(status_code=503, detail="Database unavailable")
 
 # ============================================================
 # REWARDED ADS
@@ -631,13 +644,13 @@ async def admin_grant_premium(user_id: str, admin: User = Depends(require_admin)
     return {"ok": True, "user_id": user_id}
 
 # ============================================================
-# STEP 4 - include router BEFORE middleware
-# THIS IS THE CRITICAL FIX FOR CORS / GOOGLE LOGIN
+# STEP 3 - include router BEFORE middleware
+# CRITICAL: This order makes CORS apply to all routes
 # ============================================================
 app.include_router(api_router)
 
 # ============================================================
-# STEP 5 - CORS middleware AFTER router include
+# STEP 4 - CORS middleware LAST
 # ============================================================
 app.add_middleware(
     CORSMiddleware,
@@ -671,6 +684,12 @@ async def health():
         "status": "healthy" if db_ok else "degraded",
         "database": "ok" if db_ok else "error",
         "gemini": "configured" if GEMINI_API_KEY else "missing",
+        "env": {
+            "MONGO_URL": bool(os.environ.get("MONGO_URL")),
+            "DB_NAME": bool(os.environ.get("DB_NAME")),
+            "GEMINI_API_KEY": bool(os.environ.get("GEMINI_API_KEY")),
+            "ADMIN_EMAILS": bool(os.environ.get("ADMIN_EMAILS")),
+        },
         "admin_emails": list(ADMIN_EMAILS),
     }
 

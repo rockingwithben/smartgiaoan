@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { toast } from 'sonner';
+import { useAuth } from '../lib/auth';
 
 // Helper component to generate the Initials Avatar for new users
 export const UserAvatar = ({ name, size = "w-10 h-10", textSize = "text-sm" }) => {
@@ -18,6 +19,7 @@ export const UserAvatar = ({ name, size = "w-10 h-10", textSize = "text-sm" }) =
 };
 
 export default function AuthModal({ onLoginSuccess }) {
+  const { checkAuth } = useAuth();
   const [isLogin, setIsLogin] = useState(true);
   const [formData, setFormData] = useState({
     email: '', 
@@ -29,48 +31,15 @@ export default function AuthModal({ onLoginSuccess }) {
   });
   const [isLoading, setIsLoading] = useState(false);
 
-  // Initialize Google Sign-In
-  useEffect(() => {
-    /* global google */
-    if (window.google) {
-      google.accounts.id.initialize({
-        client_id: process.env.REACT_APP_GOOGLE_CLIENT_ID,
-        callback: handleGoogleResponse,
-        cancel_on_tap_outside: false,
-      });
-    }
-  }, []);
-
-  const handleGoogleResponse = async (response) => {
+  const handleGoogleClick = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/auth/google`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: response.credential })
-      });
-      const data = await res.json();
-      
-      if (res.ok && data.session_token) {
-        localStorage.setItem('session_token', data.session_token);
-        onLoginSuccess(data.user);
-        toast.success("Signed in successfully!");
-      } else {
-        toast.error(data.detail || "Google Sign-In failed.");
-      }
-    } catch (err) {
-      toast.error("Network error during Google login.");
-    } finally {
+      const redirectUrl = `${window.location.origin}/auth/callback`;
+      window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
+      await checkAuth();
+    } catch {
+      toast.error("Google Sign-In redirect failed.");
       setIsLoading(false);
-    }
-  };
-
-  const handleGoogleClick = () => {
-    /* global google */
-    if (window.google) {
-      google.accounts.id.prompt();
-    } else {
-      toast.error("Google services not loaded. Please refresh.");
     }
   };
 
