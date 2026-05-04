@@ -23,9 +23,6 @@ import WorksheetView from './pages/WorksheetView';
 import { CookieConsent } from './components/CookieConsent';
 import './App.css';
 
-// Intercepts the Emergent Google OAuth redirect hash (#session_id=...)
-// before any route renders, and navigates to /auth/callback cleanly.
-// This prevents the hash check from running on every render cycle.
 function OAuthGate({ children }) {
   var location = useLocation();
   var navigate = useNavigate();
@@ -85,10 +82,6 @@ function AppRouter() {
   );
 }
 
-// Provider order matters:
-// I18nProvider  - no router dependency, outermost
-// BrowserRouter - must wrap everything using router hooks
-// AuthProvider  - uses window.location, must be inside BrowserRouter
 function App() {
   return (
     <I18nProvider>
