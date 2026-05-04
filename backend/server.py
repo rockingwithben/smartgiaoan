@@ -39,43 +39,27 @@ else:
     logging.warning("GEMINI_API_KEY not set - worksheet generation will fail")
 
 # ========== CONFIG ==========
-# Admin emails from env var - comma separated
-# e.g. ADMIN_EMAILS=bentaylors@hotmail.co.uk,other@admin.com
 ADMIN_EMAILS = set(
     e.strip().lower()
     for e in os.environ.get('ADMIN_EMAILS', 'bentaylors@hotmail.co.uk').split(',')
     if e.strip()
 )
-
-# Free quota per user (override via env var)
 FREE_QUOTA = int(os.environ.get('FREE_QUOTA', '3'))
 
 # ============================================================
 # APP SETUP
-# CRITICAL ORDER: add_middleware BEFORE include_router
-# Otherwise CORS OPTIONS preflights return 404 and
-# Google Login / all credentialed requests break
+# CRITICAL ORDER for FastAPI:
+# 1. Create app
+# 2. Create router
+# 3. Define ALL routes on router
+# 4. app.include_router(api_router)  ← MUST happen BEFORE middleware
+# 5. app.add_middleware(CORSMiddleware, ...)
+# 
+# If you put middleware before include_router, CORS preflight
+# OPTIONS requests return 404 and Google Login breaks.
 # ============================================================
 app = FastAPI(title="SmartGiaoAn API", version="2.0.0")
-
-# STEP 1 - CORS middleware registered FIRST
-# No wildcards (*.vercel.app) - they are incompatible with
-# allow_credentials=True per the CORS spec
-app.add_middleware(
-    CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=[
-        "https://smartgiaoan.site",
-        "https://www.smartgiaoan.site",
-        "http://localhost:3000",
-    ],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# STEP 2 - router defined
 api_router = APIRouter(prefix="/api")
-
 
 # ========== PASSWORD HASHING ==========
 def hash_password(password: str) -> str:
@@ -94,7 +78,6 @@ def verify_password(password: str, hashed_str: str) -> bool:
         return secrets.compare_digest(pwd_hash, stored_hash)
     except Exception:
         return False
-
 
 # ========== MODELS ==========
 class User(BaseModel):
@@ -137,7 +120,6 @@ class ProfileUpdateRequest(BaseModel):
 class RewardedAdRequest(BaseModel):
     tier: int  # 15 = 1 credit, 30 = 2 credits, 45 = 3 credits
 
-
 # ========== HELPERS ==========
 def _now() -> datetime:
     return datetime.now(timezone.utc)
@@ -152,7 +134,10 @@ def _parse_dt(value) -> datetime:
     return dt
 
 def _is_admin(user: Optional[User]) -> bool:
-    return bool(user and user.email.lower() in ADMIN_EMAILS)
+    """Null-safe admin check. Returns False for anonymous users or missing emails."""
+    if not user or not user.email:
+        return False
+    return user.email.strip().lower() in ADMIN_EMAILS
 
 def _tier_to_credits(tier: int) -> int:
     return {15: 1, 30: 2, 45: 3}.get(tier, 0)
@@ -177,7 +162,6 @@ async def _create_session(user_id: str, response: Response) -> str:
         path="/",
     )
     return token
-
 
 # ========== AUTH DEPENDENCIES ==========
 async def get_current_user_optional(
@@ -215,7 +199,6 @@ async def require_admin(user: User = Depends(require_user)) -> User:
     if not _is_admin(user):
         raise HTTPException(status_code=403, detail="Admin access required")
     return user
-
 
 # ========== GEMINI ==========
 WORKSHEET_SYSTEM_PROMPT = """
@@ -281,7 +264,6 @@ async def _run_gemini(prompt: str) -> dict:
     result = await asyncio.to_thread(model.generate_content, prompt)
     return json.loads(result.text)
 
-
 # ============================================================
 # AUTH ROUTES
 # ============================================================
@@ -314,9 +296,6 @@ async def auth_register(payload: EmailAuthRequest, response: Response):
 @api_router.post("/auth/login")
 async def auth_login(payload: EmailAuthRequest, response: Response):
     email = payload.email.strip().lower()
-
-    # God Mode - admin bypass (no password needed if env flag set,
-    # but here we still check password for security)
     user_doc = await db.users.find_one({"email": email})
 
     if not user_doc or not user_doc.get("password_hash"):
@@ -372,12 +351,16 @@ async def auth_session_exchange(payload: dict, response: Response):
         await db.users.insert_one(user_doc)
         logger.info(f"New Google user: {email}")
     else:
-        # Refresh picture and ensure admin gets premium
-        update = {"picture": emergent_user.get("picture", user_doc.get("picture", ""))}
+        # GOD MODE FIX: Always ensure admin gets premium on EVERY login
+        update = {
+            "picture": emergent_user.get("picture", user_doc.get("picture", ""))
+        }
         if email in ADMIN_EMAILS:
             update["is_premium"] = True
-        await db.users.update_one({"email": email}, {"$set": update})
-        user_doc = await db.users.find_one({"email": email}, {"_id": 0})
+        if update:
+            await db.users.update_one({"email": email}, {"$set": update})
+            # Re-fetch to get updated doc
+            user_doc = await db.users.find_one({"email": email}, {"_id": 0})
 
     token = await _create_session(user_doc["user_id"], response)
     user_doc.pop("_id", None)
@@ -441,7 +424,6 @@ async def delete_account(user: User = Depends(require_user), response: Response 
     logger.info(f"Account deleted: {user.user_id}")
     return {"ok": True}
 
-
 # ============================================================
 # WORKSHEET ROUTES
 # ============================================================
@@ -454,8 +436,12 @@ async def generate_worksheet(
     if not GEMINI_API_KEY:
         raise HTTPException(status_code=500, detail="Gemini API key not configured")
 
+    # DEBUG logging for God Mode troubleshooting
+    is_admin = _is_admin(user)
+    logger.info(f"Generate request | user={user.user_id if user else 'anon'} | email={user.email if user else 'none'} | is_premium={user.is_premium if user else 'n/a'} | is_admin={is_admin}")
+
     # Quota check - admins and premium users have unlimited access
-    if user and not user.is_premium and not _is_admin(user):
+    if user and not user.is_premium and not is_admin:
         allowance = FREE_QUOTA + (user.bonus_credits or 0)
         if user.free_used >= allowance:
             raise HTTPException(
@@ -501,7 +487,7 @@ async def generate_worksheet(
     await db.worksheets.insert_one(doc)
     logger.info(f"Worksheet generated: {worksheet_id} user={user.user_id if user else 'anon'}")
 
-    if user and not user.is_premium and not _is_admin(user):
+    if user and not user.is_premium and not is_admin:
         await db.users.update_one(
             {"user_id": user.user_id},
             {"$inc": {"free_used": 1}},
@@ -543,7 +529,6 @@ async def delete_worksheet(worksheet_id: str, user: User = Depends(require_user)
     await db.worksheets.delete_one({"worksheet_id": worksheet_id})
     return {"ok": True}
 
-
 # ============================================================
 # LIBRARY
 # ============================================================
@@ -568,7 +553,6 @@ async def get_public_library(
     ).sort("created_at", -1).limit(limit).to_list(limit)
     return docs
 
-
 # ============================================================
 # REWARDED ADS
 # ============================================================
@@ -588,7 +572,6 @@ async def grant_rewarded(payload: RewardedAdRequest, user: User = Depends(requir
     )
     logger.info(f"Rewarded ad: +{credits} credits to {user.user_id}")
     return {"ok": True, "credits_granted": credits, "user": updated}
-
 
 # ============================================================
 # BILLING
@@ -620,7 +603,6 @@ async def cancel_premium(user: User = Depends(require_user)):
     )
     return {"ok": True, "user": updated}
 
-
 # ============================================================
 # ADMIN
 # ============================================================
@@ -648,12 +630,26 @@ async def admin_grant_premium(user_id: str, admin: User = Depends(require_admin)
         raise HTTPException(status_code=404, detail="User not found")
     return {"ok": True, "user_id": user_id}
 
-
 # ============================================================
-# STEP 3 - include router AFTER middleware
+# STEP 4 - include router BEFORE middleware
+# THIS IS THE CRITICAL FIX FOR CORS / GOOGLE LOGIN
 # ============================================================
 app.include_router(api_router)
 
+# ============================================================
+# STEP 5 - CORS middleware AFTER router include
+# ============================================================
+app.add_middleware(
+    CORSMiddleware,
+    allow_credentials=True,
+    allow_origins=[
+        "https://smartgiaoan.site",
+        "https://www.smartgiaoan.site",
+        "http://localhost:3000",
+    ],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ============================================================
 # ROOT + HEALTH
@@ -677,7 +673,6 @@ async def health():
         "gemini": "configured" if GEMINI_API_KEY else "missing",
         "admin_emails": list(ADMIN_EMAILS),
     }
-
 
 # ============================================================
 # LIFECYCLE
