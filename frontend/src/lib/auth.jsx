@@ -20,7 +20,6 @@ export function AuthProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    // CRITICAL: If returning from OAuth callback, skip the /me check.
     if (window.location.hash?.includes('session_id=')) {
       setLoading(false);
       return;
@@ -28,7 +27,6 @@ export function AuthProvider({ children }) {
     checkAuth();
   }, [checkAuth]);
 
-  // Exposing refreshUser to allow returning the user object directly
   const refreshUser = useCallback(async () => {
     try {
       const me = await getMe();
@@ -41,7 +39,6 @@ export function AuthProvider({ children }) {
   }, []);
 
   const startLogin = useCallback(() => {
-    // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
     const redirectUrl = window.location.origin + '/dashboard';
     window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
   }, []);
@@ -53,18 +50,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   return (
-    <AuthContext.Provider 
-      value={{ 
-        user, 
-        setUser, 
-        loading, 
-        startLogin, 
-        logout, 
-        checkAuth, 
-        refreshUser, 
-        refresh: checkAuth 
-      }}
-    >
+    <AuthContext.Provider value={{ user, setUser, loading, startLogin, logout, refreshUser, checkAuth }}>
       {children}
     </AuthContext.Provider>
   );
