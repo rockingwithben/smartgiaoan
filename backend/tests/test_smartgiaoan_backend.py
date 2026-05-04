@@ -5,7 +5,7 @@ import uuid
 import requests
 import pytest
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://lotus-esl.preview.emergentagent.com').rstrip('/')
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'http://localhost:8001').rstrip('/')
 
 # Read backend env to get mongo for seeding
 from pymongo import MongoClient
@@ -94,10 +94,11 @@ def test_grant_rewarded(auth_headers, seeded):
     # baseline
     me1 = requests.get(f"{BASE_URL}/api/auth/me", headers=auth_headers).json()
     base = me1["bonus_credits"]
-    r = requests.post(f"{BASE_URL}/api/usage/grant-rewarded", headers=auth_headers, json={"tier": "medium"})
+    r = requests.post(f"{BASE_URL}/api/usage/grant-rewarded", headers=auth_headers, json={"tier": 15})
     assert r.status_code == 200
     data = r.json()
-    assert data["granted"] == 1
+    assert data["ok"] is True
+    assert data["credits_granted"] == 1
     assert data["user"]["bonus_credits"] == base + 1
     assert "_id" not in data["user"]
 
@@ -106,7 +107,7 @@ def test_grant_rewarded(auth_headers, seeded):
 def test_mark_premium(auth_headers, seeded):
     r = requests.post(f"{BASE_URL}/api/billing/mark-premium", headers=auth_headers)
     assert r.status_code == 200
-    user = r.json()
+    user = r.json()["user"]
     assert user["is_premium"] is True
     assert "_id" not in user
     # Verify persistence via /auth/me
