@@ -35,7 +35,6 @@ function OAuthGate({ children }) {
 }
 
 function AppRouter() {
-  const navigate = useNavigate();
   return (
     <OAuthGate>
       <Routes>
@@ -53,7 +52,6 @@ function AppRouter() {
         <Route path="/levels" element={<Levels />} />
         <Route path="/library" element={<PublicLibrary />} />
         <Route path="/worksheet/:id" element={<WorksheetView />} />
-        <Route path="/login" element={<AuthModal />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
       <CookieConsent />
