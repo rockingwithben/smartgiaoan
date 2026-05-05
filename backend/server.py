@@ -23,9 +23,19 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 # ========== MONGODB ==========
-mongo_url = os.environ['MONGO_URL']
-mongo_client = AsyncIOMotorClient(mongo_url)
-db = mongo_client[os.environ['DB_NAME']]
+mongo_url = os.environ.get('MONGO_URL', '')
+db_name = os.environ.get('DB_NAME', 'smartgiaoan')
+logger.info(f"MONGO_URL present: {bool(mongo_url)}")
+logger.info(f"DB_NAME: {db_name}")
+
+try:
+    mongo_client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=5000)
+    db = mongo_client[db_name]
+    logger.info("MongoDB client created successfully")
+except Exception as e:
+    logger.error(f"MongoDB connection failed: {e}")
+    mongo_client = None
+    db = None
 
 # ========== GEMINI ==========
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
@@ -35,7 +45,6 @@ else:
     logger.warning("GEMINI_API_KEY not set")
 
 # ========== CONFIG ==========
-# Set ADMIN_EMAILS=bentaylors@hotmail.co.uk in Vercel env vars
 ADMIN_EMAILS = set(
     e.strip().lower()
     for e in os.environ.get('ADMIN_EMAILS', 'bentaylors@hotmail.co.uk').split(',')
@@ -44,14 +53,13 @@ ADMIN_EMAILS = set(
 FREE_QUOTA = int(os.environ.get('FREE_QUOTA', '3'))
 
 # ========== CORS ORIGINS ==========
-# Set CORS_ORIGINS in Vercel env vars if you add new domains
-# e.g. CORS_ORIGINS=https://smartgiaoan.site,https://www.smartgiaoan.site
 _cors_env = os.environ.get('CORS_ORIGINS', '')
 CORS_ORIGINS = [o.strip() for o in _cors_env.split(',') if o.strip()] or [
     "https://smartgiaoan.site",
     "https://www.smartgiaoan.site",
     "http://localhost:3000",
 ]
+logger.info(f"CORS_ORIGINS: {CORS_ORIGINS}")
 
 # ============================================================
 # APP - CORS middleware MUST be registered before include_router
@@ -121,7 +129,7 @@ class ProfileUpdateRequest(BaseModel):
     focus_area: str
 
 class RewardedAdRequest(BaseModel):
-    tier: int  # 15=1 credit, 30=2 credits, 45=3 credits
+    tier: int
 
 # ========== HELPERS ==========
 def _now():
@@ -261,7 +269,6 @@ async def auth_login(payload: EmailAuthRequest, response: Response):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     if not verify_password(payload.password, doc["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    # Ensure admin always has premium
     if email in ADMIN_EMAILS and not doc.get("is_premium"):
         await db.users.update_one({"email": email}, {"$set": {"is_premium": True}})
         doc["is_premium"] = True
@@ -493,14 +500,21 @@ async def root():
 
 @app.get("/health", include_in_schema=False)
 async def health():
+    db_ok = False
+    error_msg = ""
     try:
-        await db.command("ping")
-        db_ok = True
-    except Exception:
-        db_ok = False
+        if mongo_client:
+            await mongo_client.admin.command("ping")
+            db_ok = True
+        else:
+            error_msg = "mongo_client is None"
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Health check DB ping failed: {e}")
     return {
         "status": "healthy" if db_ok else "degraded",
         "database": "ok" if db_ok else "error",
+        "db_error": error_msg,
         "gemini": "configured" if GEMINI_API_KEY else "missing",
         "admin_emails": list(ADMIN_EMAILS),
         "cors_origins": CORS_ORIGINS,
@@ -508,4 +522,5 @@ async def health():
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
-    mongo_client.close()
+    if mongo_client:
+        mongo_client.close()
