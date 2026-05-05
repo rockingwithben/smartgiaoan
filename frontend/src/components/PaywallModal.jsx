@@ -1,60 +1,110 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import { X, Play, Crown } from 'lucide-react';
+import { useI18n } from '../lib/i18n';
+import { markPremium } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { toast } from 'sonner';
 
-export default function PaywallModal({ onClose, onWatchAd }) {
-  const navigate = useNavigate();
-  const { user } = useAuth();
+export function PaywallModal({ open, onClose, onWatchAd }) {
+  const { t } = useI18n();
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
+        <div className="p-8 text-center">
+          <div className="text-5xl mb-4">🎯</div>
+          <h2 className="font-black text-2xl text-gray-900 mb-2">{t('paywall_title')}</h2>
+          <p className="text-gray-500 font-medium text-sm mb-8">{t('paywall_sub')}</p>
+          <div className="space-y-3">
+            <button onClick={() => onWatchAd('short')}
+              className="w-full bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold py-3 rounded-xl transition-colors text-sm">
+              📺 {t('paywall_watch')} — +1 worksheet
+            </button>
+            <button onClick={() => onWatchAd('medium')}
+              className="w-full bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold py-3 rounded-xl transition-colors text-sm">
+              📺 {t('paywall_watch30')} — +2 worksheets
+            </button>
+            <button onClick={() => onWatchAd('long')}
+              className="w-full bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold py-3 rounded-xl transition-colors text-sm">
+              📺 {t('paywall_watch45')} — +3 worksheets
+            </button>
+            <div className="relative my-4">
+              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-100" /></div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-white px-3 text-gray-400 font-bold tracking-wider">or</span>
+              </div>
+            </div>
+            <button onClick={onClose} className="w-full bg-black text-white font-bold py-3 rounded-xl hover:bg-gray-800 transition-colors">
+              {t('paywall_upgrade')} — £5/month
+            </button>
+          </div>
+        </div>
+        <button onClick={onClose} className="w-full py-3 text-xs font-bold text-gray-400 hover:text-gray-600 border-t border-gray-100 transition-colors">
+          Maybe later
+        </button>
+      </div>
+    </div>
+  );
+}
 
-  const tiers = [
-    { tier: 15, label: 'Watch 15s ad', reward: '+1 credit' },
-    { tier: 30, label: 'Watch 30s ad', reward: '+2 credits' },
-    { tier: 45, label: 'Watch 45s ad', reward: '+3 credits' },
-  ];
+export function UpgradeModal({ open, onClose }) {
+  const { t } = useI18n();
+  const { refresh } = useAuth();
+  const [activating, setActivating] = React.useState(false);
+
+  if (!open) return null;
+
+  const handleActivate = async () => {
+    setActivating(true);
+    try {
+      await markPremium();
+      await refresh();
+      toast.success('Premium activated! Unlimited worksheets unlocked.');
+      onClose();
+    } catch (err) {
+      toast.error('Could not activate Premium. Contact support if you have paid.');
+    } finally {
+      setActivating(false);
+    }
+  };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-white rounded-2xl max-w-md w-full p-6 relative shadow-2xl">
-        <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition">
-          <X size={20} />
-        </button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
+        <div className="p-8 text-center">
+          <div className="text-5xl mb-4">👑</div>
+          <h2 className="font-black text-2xl text-gray-900 mb-1">{t('upgrade_modal_title')}</h2>
+          <p className="text-gray-500 font-medium text-sm mb-6">{t('upgrade_modal_sub')}</p>
 
-        <div className="text-center mb-6">
-          <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-3">
-            <Crown size={24} className="text-amber-600" />
-          </div>
-          <h3 className="text-xl font-bold text-gray-900 mb-1">Free Limit Reached</h3>
-          <p className="text-gray-500 text-sm">You've used all your free worksheets. Get more credits or upgrade to Premium.</p>
-        </div>
-
-        <div className="space-y-3 mb-6">
-          {tiers.map((item) => (
-            <button
-              key={item.tier}
-              onClick={() => onWatchAd(item.tier)}
-              className="w-full flex items-center justify-between p-4 border border-gray-200 rounded-xl hover:border-indigo-500 hover:bg-indigo-50 transition group"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center group-hover:bg-indigo-200 transition">
-                  <Play size={14} className="text-indigo-600" />
-                </div>
-                <span className="font-medium text-gray-900">{item.label}</span>
+          <div className="bg-gray-50 rounded-2xl p-5 mb-6 text-left space-y-2">
+            {['Unlimited worksheets', 'No ads, ever', 'Priority AI generation', 'Full worksheet history', 'PDF export'].map((f) => (
+              <div key={f} className="flex items-center gap-2 text-sm font-bold text-gray-700">
+                <span className="text-green-500">✓</span> {f}
               </div>
-              <span className="text-indigo-600 font-bold text-sm">{item.reward}</span>
-            </button>
-          ))}
-        </div>
+            ))}
+          </div>
 
-        <div className="border-t pt-4">
-          <button
-            onClick={() => { onClose(); navigate('/pricing'); }}
-            className="w-full bg-black text-white py-3 rounded-xl font-semibold hover:bg-gray-800 transition"
-          >
-            Upgrade to Premium
+          <div id="paypal-button-container" className="mb-4">
+            <a
+              href="https://www.paypal.com/ncp/payment/KRKWACD47HF7G"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full flex items-center justify-center gap-2 bg-yellow-400 hover:bg-yellow-500 text-black font-black py-4 rounded-2xl transition-colors shadow-md"
+            >
+              <img src="https://www.paypalobjects.com/webstatic/icon/pp16.png" alt="PayPal" className="w-5 h-5" />
+              Pay £5/month with PayPal
+            </a>
+          </div>
+
+          <p className="text-xs text-gray-400 font-medium mb-4">{t('after_paypal_note')}</p>
+
+          <button onClick={handleActivate} disabled={activating}
+            className="w-full bg-black text-white font-bold py-3 rounded-xl hover:bg-gray-800 transition-colors disabled:opacity-50">
+            {activating ? 'Activating...' : t('activate_premium')}
           </button>
-          <p className="text-center text-xs text-gray-400 mt-2">200,000₫/month · Unlimited · No Ads · 24/7 Support</p>
         </div>
+        <button onClick={onClose} className="w-full py-3 text-xs font-bold text-gray-400 hover:text-gray-600 border-t border-gray-100 transition-colors">
+          Cancel
+        </button>
       </div>
     </div>
   );
