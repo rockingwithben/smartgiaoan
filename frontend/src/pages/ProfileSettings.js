@@ -1,11 +1,13 @@
-import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { http } from '../lib/api';
 
 export default function ProfileSettings() {
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     teaching_level: '',
     class_size: '',
-    focus_area: ''
+    focus_area: '',
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -14,33 +16,27 @@ export default function ProfileSettings() {
   useEffect(() => {
     const fetchProfile = async () => {
       try {
-        const token = localStorage.getItem('session_token');
-        if (!token) {
-          // If they aren't logged in, send them to the front door
-          window.location.href = '/login';
+        const response = await http.get('/auth/me');
+        const user = response.data;
+        setFormData({
+          teaching_level: user.teaching_level || '',
+          class_size: user.class_size || '',
+          focus_area: user.focus_area || '',
+        });
+      } catch (error) {
+        if (error.response?.status === 401) {
+          navigate('/login', { replace: true });
           return;
         }
-        
-        const response = await fetch(`${process.env.REACT_APP_BACKEND_URL || ''}/api/auth/me`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        
-        if (response.ok) {
-          const user = await response.json();
-          setFormData({
-            teaching_level: user.teaching_level || '',
-            class_size: user.class_size || '',
-            focus_area: user.focus_area || ''
-          });
-        }
-      } catch (error) {
-        console.error("Failed to load profile", error);
+        console.error('Failed to load profile', error);
+        setMessage({ type: 'error', text: 'Could not load your profile settings.' });
+      } finally {
+        setIsLoading(false);
       }
-      setIsLoading(false);
     };
 
     fetchProfile();
-  }, []);
+  }, [navigate]);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -52,70 +48,64 @@ export default function ProfileSettings() {
     setMessage({ type: '', text: '' });
 
     try {
-      const token = localStorage.getItem('session_token');
-      const response = await fetch(`${process.env.REACT_APP_BACKEND_URL || ''}/api/auth/profile`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(formData)
-      });
-
-      if (response.ok) {
-        setMessage({ type: 'success', text: 'Classroom AI profile updated successfully! 🚀' });
-      } else {
-        setMessage({ type: 'error', text: 'Failed to save settings. Please try again.' });
-      }
+      await http.put('/auth/profile', formData);
+      setMessage({ type: 'success', text: 'Classroom AI profile updated successfully! 🚀' });
     } catch (error) {
-      setMessage({ type: 'error', text: 'Network error. Please check your connection.' });
+      if (error.response?.status === 401) {
+        navigate('/login', { replace: true });
+        return;
+      }
+      setMessage({ type: 'error', text: 'Failed to save settings. Please try again.' });
+    } finally {
+      setIsSaving(false);
     }
-    setIsSaving(false);
   };
 
   if (isLoading) {
     return (
-      <div className="flex justify-center items-center min-h-screen bg-gray-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600"></div>
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+        <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-red-600" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8 font-sans">
-      <div className="max-w-2xl mx-auto">
-        
-        <div className="mb-8 flex justify-between items-end">
+    <div className="min-h-screen bg-gray-50 px-4 py-12 font-sans sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-2xl">
+        <div className="mb-8 flex items-end justify-between">
           <div>
             <h1 className="text-3xl font-extrabold text-gray-900">Classroom Profile</h1>
-            <p className="text-gray-500 mt-2 font-medium">Train the AI to adapt worksheets exactly to your students.</p>
+            <p className="mt-2 font-medium text-gray-500">
+              Train the AI to adapt worksheets exactly to your students.
+            </p>
           </div>
-          <Link to="/dashboard" className="text-sm font-bold text-gray-500 hover:text-black transition">
+          <Link to="/dashboard" className="text-sm font-bold text-gray-500 transition hover:text-black">
             ← Back to Dashboard
           </Link>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
-          
+        <div className="rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
           {message.text && (
-            <div className={`mb-6 p-4 rounded-xl font-bold text-sm border ${
-              message.type === 'success' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'
-            }`}>
+            <div
+              className={`mb-6 rounded-xl border p-4 text-sm font-bold ${
+                message.type === 'success'
+                  ? 'border-green-200 bg-green-50 text-green-700'
+                  : 'border-red-200 bg-red-50 text-red-700'
+              }`}
+            >
               {message.text}
             </div>
           )}
 
           <form onSubmit={handleSave} className="space-y-6">
-            
-            {/* Teaching Level */}
             <div>
-              <label className="block text-sm font-bold text-gray-900 mb-2">Primary Teaching Level</label>
-              <select 
-                name="teaching_level" 
-                value={formData.teaching_level} 
+              <label className="mb-2 block text-sm font-bold text-gray-900">Primary Teaching Level</label>
+              <select
+                name="teaching_level"
+                value={formData.teaching_level}
                 onChange={handleChange}
                 required
-                className="w-full p-4 bg-gray-50 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-red-500 font-medium text-gray-700"
+                className="w-full rounded-xl border border-gray-300 bg-gray-50 p-4 font-medium text-gray-700 outline-none focus:ring-2 focus:ring-red-500"
               >
                 <option value="" disabled>Select the age group...</option>
                 <option value="Kindergarten">Kindergarten (Aged 3-5)</option>
@@ -126,15 +116,14 @@ export default function ProfileSettings() {
               </select>
             </div>
 
-            {/* Class Size */}
             <div>
-              <label className="block text-sm font-bold text-gray-900 mb-2">Average Class Size</label>
-              <select 
-                name="class_size" 
-                value={formData.class_size} 
+              <label className="mb-2 block text-sm font-bold text-gray-900">Average Class Size</label>
+              <select
+                name="class_size"
+                value={formData.class_size}
                 onChange={handleChange}
                 required
-                className="w-full p-4 bg-gray-50 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-red-500 font-medium text-gray-700"
+                className="w-full rounded-xl border border-gray-300 bg-gray-50 p-4 font-medium text-gray-700 outline-none focus:ring-2 focus:ring-red-500"
               >
                 <option value="" disabled>Select class size...</option>
                 <option value="1 to 1 (Tutoring)">1 to 1 (Tutoring)</option>
@@ -144,15 +133,14 @@ export default function ProfileSettings() {
               </select>
             </div>
 
-            {/* Focus Area */}
             <div>
-              <label className="block text-sm font-bold text-gray-900 mb-2">Main Pedagogical Focus</label>
-              <select 
-                name="focus_area" 
-                value={formData.focus_area} 
+              <label className="mb-2 block text-sm font-bold text-gray-900">Main Pedagogical Focus</label>
+              <select
+                name="focus_area"
+                value={formData.focus_area}
                 onChange={handleChange}
                 required
-                className="w-full p-4 bg-gray-50 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-red-500 font-medium text-gray-700"
+                className="w-full rounded-xl border border-gray-300 bg-gray-50 p-4 font-medium text-gray-700 outline-none focus:ring-2 focus:ring-red-500"
               >
                 <option value="" disabled>What do your students struggle with most?</option>
                 <option value="Phonics and Basic Tracing">Phonics & Tracing (Young Learners)</option>
@@ -163,16 +151,15 @@ export default function ProfileSettings() {
               </select>
             </div>
 
-            <div className="pt-4 border-t border-gray-100">
-              <button 
-                type="submit" 
+            <div className="border-t border-gray-100 pt-4">
+              <button
+                type="submit"
                 disabled={isSaving}
-                className="w-full bg-black text-white font-extrabold p-4 rounded-xl hover:bg-gray-800 transition shadow-md disabled:bg-gray-400"
+                className="w-full rounded-xl bg-black p-4 font-extrabold text-white shadow-md transition hover:bg-gray-800 disabled:bg-gray-400"
               >
                 {isSaving ? 'Saving Profile...' : 'Save AI Settings'}
               </button>
             </div>
-
           </form>
         </div>
       </div>
