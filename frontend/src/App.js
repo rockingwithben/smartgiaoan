@@ -23,9 +23,9 @@ import { CookieConsent } from './components/CookieConsent';
 import './App.css';
 
 function OAuthGate({ children }) {
-  var location = useLocation();
-  var navigate = useNavigate();
-  useEffect(function() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  useEffect(() => {
     if (location.hash && location.hash.includes('session_id=')) {
       navigate('/auth/callback' + location.hash, { replace: true });
     }
@@ -35,31 +35,29 @@ function OAuthGate({ children }) {
 }
 
 function AppRouter() {
-  var navigate = useNavigate();
+  const navigate = useNavigate();
   return (
     <OAuthGate>
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/levels" element={<Levels />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
-        <Route path="/login" element={
-          <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-            <AuthModal onLoginSuccess={function() { navigate('/dashboard', { replace: true }); }} />
-          </div>
-        } />
-        <Route path="/library" element={<PublicLibrary />} />
-        <Route path="/worksheet/:id" element={<WorksheetView />} />
-        <Route path="/profile" element={<ProfileSettings />} />
-        <Route path="/account" element={<Account />} />
         <Route path="/about" element={<About />} />
         <Route path="/pricing" element={<Pricing />} />
         <Route path="/faq" element={<FAQ />} />
         <Route path="/contact" element={<Contact />} />
         <Route path="/privacy" element={<Privacy />} />
         <Route path="/terms" element={<Terms />} />
+        <Route path="/account" element={<Account />} />
+        <Route path="/profile" element={<ProfileSettings />} />
+        <Route path="/levels" element={<Levels />} />
+        <Route path="/library" element={<PublicLibrary />} />
+        <Route path="/worksheet/:id" element={<WorksheetView />} />
+        <Route path="/login" element={<AuthModal />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
+      <CookieConsent />
+      <Toaster position="top-center" richColors />
     </OAuthGate>
   );
 }
@@ -70,8 +68,6 @@ function App() {
       <BrowserRouter>
         <AuthProvider>
           <AppRouter />
-          <CookieConsent />
-          <Toaster position="bottom-right" richColors closeButton toastOptions={{ duration: 4000 }} />
         </AuthProvider>
       </BrowserRouter>
     </I18nProvider>
