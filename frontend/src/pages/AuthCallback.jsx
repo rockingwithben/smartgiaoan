@@ -16,7 +16,7 @@ export default function AuthCallback() {
     const m = hash.match(/session_id=([^&]+)/);
 
     if (!m) {
-      navigate('/');
+      navigate('/', { replace: true });
       return;
     }
 
@@ -38,16 +38,17 @@ export default function AuthCallback() {
         }
       } catch (e) {
         console.error('Auth callback failed:', e);
-        navigate('/login', { replace: true });
+        navigate('/', { replace: true });
       }
     })();
   }, [navigate, checkAuth]);
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mb-4" />
-      <h2 className="text-xl font-semibold text-gray-900">Authenticating...</h2>
-      <p className="text-gray-500 mt-2">Securing your session.</p>
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="text-center">
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">Authenticating...</h2>
+        <p className="text-gray-500">Securing your session.</p>
+      </div>
     </div>
   );
 }
