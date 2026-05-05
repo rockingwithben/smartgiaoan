@@ -12,60 +12,77 @@ import hashlib
 import secrets
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
-from typing import List, Optional, Any, Dict
+from typing import Optional, Any, Dict
 from datetime import datetime, timezone, timedelta
 import google.generativeai as genai
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# ========== MONGODB ==========
 mongo_url = os.environ['MONGO_URL']
 mongo_client = AsyncIOMotorClient(mongo_url)
 db = mongo_client[os.environ['DB_NAME']]
 
+# ========== GEMINI ==========
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 else:
-    logging.warning("GEMINI_API_KEY not set - worksheet generation will fail")
+    logger.warning("GEMINI_API_KEY not set")
 
+# ========== CONFIG ==========
+# Set ADMIN_EMAILS=bentaylors@hotmail.co.uk in Vercel env vars
 ADMIN_EMAILS = set(
     e.strip().lower()
     for e in os.environ.get('ADMIN_EMAILS', 'bentaylors@hotmail.co.uk').split(',')
     if e.strip()
 )
 FREE_QUOTA = int(os.environ.get('FREE_QUOTA', '3'))
-CORS_ORIGINS = [
-    origin.strip()
-    for origin in os.environ.get(
-        'CORS_ORIGINS',
-        'https://smartgiaoan.site,https://www.smartgiaoan.site,http://localhost:3000,http://127.0.0.1:3000'
-    ).split(',')
-    if origin.strip()
+
+# ========== CORS ORIGINS ==========
+# Set CORS_ORIGINS in Vercel env vars if you add new domains
+# e.g. CORS_ORIGINS=https://smartgiaoan.site,https://www.smartgiaoan.site
+_cors_env = os.environ.get('CORS_ORIGINS', '')
+CORS_ORIGINS = [o.strip() for o in _cors_env.split(',') if o.strip()] or [
+    "https://smartgiaoan.site",
+    "https://www.smartgiaoan.site",
+    "http://localhost:3000",
 ]
 
+# ============================================================
+# APP - CORS middleware MUST be registered before include_router
+# ============================================================
 app = FastAPI(title="SmartGiaoAn API", version="2.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_credentials=True,
+    allow_origins=CORS_ORIGINS,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 api_router = APIRouter(prefix="/api")
 
+# ========== PASSWORD HASHING ==========
 def hash_password(password: str) -> str:
     salt = secrets.token_hex(16)
-    pwd_hash = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt.encode('utf-8'), 100000).hex()
-    return f"{salt}:{pwd_hash}"
+    h = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000).hex()
+    return f"{salt}:{h}"
 
-def verify_password(password: str, hashed_str: str) -> bool:
+def verify_password(password: str, hashed: str) -> bool:
     try:
-        salt, stored_hash = hashed_str.split(':', 1)
-        pwd_hash = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt.encode('utf-8'), 100000).hex()
-        return secrets.compare_digest(pwd_hash, stored_hash)
+        salt, stored = hashed.split(':', 1)
+        h = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000).hex()
+        return secrets.compare_digest(h, stored)
     except Exception:
         return False
 
+# ========== MODELS ==========
 class User(BaseModel):
     model_config = ConfigDict(extra="ignore")
     user_id: str
@@ -104,49 +121,40 @@ class ProfileUpdateRequest(BaseModel):
     focus_area: str
 
 class RewardedAdRequest(BaseModel):
-    tier: int
+    tier: int  # 15=1 credit, 30=2 credits, 45=3 credits
 
-def _now() -> datetime:
+# ========== HELPERS ==========
+def _now():
     return datetime.now(timezone.utc)
 
-def _parse_dt(value) -> datetime:
-    if isinstance(value, datetime):
-        dt = value
+def _parse_dt(v):
+    if isinstance(v, datetime):
+        dt = v
     else:
-        dt = datetime.fromisoformat(str(value).replace('Z', '+00:00'))
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt
+        dt = datetime.fromisoformat(str(v).replace('Z', '+00:00'))
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
-def _is_admin(user: Optional[User]) -> bool:
-    if not user or not user.email:
-        return False
-    return user.email.strip().lower() in ADMIN_EMAILS
-
-def _tier_to_credits(tier: int) -> int:
-    return {15: 1, 30: 2, 45: 3}.get(tier, 0)
+def _is_admin(user):
+    return bool(user and user.email and user.email.strip().lower() in ADMIN_EMAILS)
 
 async def _create_session(user_id: str, response: Response) -> str:
     token = str(uuid.uuid4())
-    expires_at = _now() + timedelta(days=7)
+    expires = _now() + timedelta(days=7)
     await db.user_sessions.insert_one({
         "session_id": str(uuid.uuid4()),
         "user_id": user_id,
         "session_token": token,
-        "expires_at": expires_at.isoformat(),
+        "expires_at": expires.isoformat(),
         "created_at": _now().isoformat(),
     })
     response.set_cookie(
-        key="session_token",
-        value=token,
-        httponly=True,
-        secure=True,
-        samesite="none",
-        max_age=7 * 24 * 3600,
-        path="/",
+        key="session_token", value=token,
+        httponly=True, secure=True, samesite="none",
+        max_age=7*24*3600, path="/"
     )
     return token
 
+# ========== AUTH DEPS ==========
 async def get_current_user_optional(
     request: Request,
     session_token: Optional[str] = Cookie(None),
@@ -159,17 +167,13 @@ async def get_current_user_optional(
     if not token:
         return None
     session = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
-    if not session:
+    if not session or _parse_dt(session["expires_at"]) < _now():
         return None
-    if _parse_dt(session["expires_at"]) < _now():
-        return None
-    user_doc = await db.users.find_one({"user_id": session["user_id"]}, {"_id": 0})
-    if not user_doc:
-        return None
-    return User(**user_doc)
+    doc = await db.users.find_one({"user_id": session["user_id"]}, {"_id": 0})
+    return User(**doc) if doc else None
 
 async def require_user(user: Optional[User] = Depends(get_current_user_optional)) -> User:
-    if user is None:
+    if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
     return user
 
@@ -178,18 +182,19 @@ async def require_admin(user: User = Depends(require_user)) -> User:
         raise HTTPException(status_code=403, detail="Admin access required")
     return user
 
-WORKSHEET_SYSTEM_PROMPT = """
-You are a senior Cambridge ESOL examiner and ESL curriculum designer specialising in
-Vietnamese learners. You create rigorous, culturally-relevant worksheets that:
+# ========== GEMINI ==========
+SYSTEM_PROMPT = """
+You are a senior Cambridge ESOL examiner and ESL curriculum designer specialising in Vietnamese learners.
 
-- Are STRICTLY aligned to the CEFR level provided (A1-C2)
+Rules:
+- STRICTLY align to the CEFR level given (A1-C2)
 - Use Vietnamese names: Minh, Lan, Huy, Thao, Nam, Linh, Duc, Mai
-- Reference Vietnamese locations: Hanoi, Ho Chi Minh City/Saigon, Da Nang, Hoi An, Sapa, Da Lat
-- Include Vietnamese cultural contexts: Tet, banh mi, pho, ao dai, Mid-Autumn Festival
-- Fill a MINIMUM of 3 A4 pages of content
-- Include a complete answer key for every exercise
+- Use Vietnamese locations: Hanoi, Ho Chi Minh City, Da Nang, Hoi An, Sapa, Da Lat
+- Include Vietnamese culture: Tet, banh mi, pho, ao dai, Mid-Autumn Festival
+- Minimum 3 full A4 pages of content
+- Full answer key for every exercise
 
-OUTPUT: Valid JSON only. No markdown. No commentary outside JSON.
+OUTPUT: Valid JSON only. No markdown fences. No text outside the JSON object.
 
 JSON SCHEMA:
 {
@@ -198,47 +203,35 @@ JSON SCHEMA:
   "cefr": "string",
   "skill": "string",
   "topic": "string",
-  "reading_passage": {
-    "title": "string",
-    "text": "string (min 300 words A1-B1, 500+ words B2-C2)",
-    "word_count": number
-  },
+  "reading_passage": {"title": "string", "text": "string", "word_count": 0},
   "vocabulary": {
     "glossary": [{"word": "string", "definition": "string", "example": "string"}],
     "exercises": [{"type": "string", "instructions": "string", "items": [], "answers": []}]
   },
   "grammar": {
-    "focus": "string",
-    "explanation": "string",
+    "focus": "string", "explanation": "string",
     "exercises": [{"type": "string", "instructions": "string", "items": [], "answers": []}]
   },
   "comprehension": {
     "exercises": [{"type": "string", "instructions": "string", "items": [], "answers": []}]
   },
-  "writing": {
-    "task": "string",
-    "success_criteria": ["string"],
-    "model_answer": "string"
-  },
-  "extension": {
-    "activity": "string",
-    "teacher_notes": "string"
-  }
+  "writing": {"task": "string", "success_criteria": ["string"], "model_answer": "string"},
+  "extension": {"activity": "string", "teacher_notes": "string"}
 }
 """.strip()
 
 async def _run_gemini(prompt: str) -> dict:
     model = genai.GenerativeModel(
         model_name="gemini-2.5-flash-preview-04-17",
-        system_instruction=WORKSHEET_SYSTEM_PROMPT,
-        generation_config={
-            "response_mime_type": "application/json",
-            "temperature": 0.8,
-            "max_output_tokens": 8192,
-        },
+        system_instruction=SYSTEM_PROMPT,
+        generation_config={"response_mime_type": "application/json", "temperature": 0.8, "max_output_tokens": 8192},
     )
     result = await asyncio.to_thread(model.generate_content, prompt)
     return json.loads(result.text)
+
+# ============================================================
+# AUTH ROUTES
+# ============================================================
 
 @api_router.post("/auth/register")
 async def auth_register(payload: EmailAuthRequest, response: Response):
@@ -247,39 +240,39 @@ async def auth_register(payload: EmailAuthRequest, response: Response):
         raise HTTPException(status_code=400, detail="Email already registered")
     user_id = f"user_{uuid.uuid4().hex[:12]}"
     await db.users.insert_one({
-        "user_id": user_id,
-        "email": email,
-        "name": payload.name.strip() if payload.name else email.split("@")[0],
+        "user_id": user_id, "email": email,
+        "name": (payload.name or "").strip() or email.split("@")[0],
         "role": payload.role or "Teacher",
         "heard_from": payload.heard_from or "",
         "password_hash": hash_password(payload.password),
         "is_premium": email in ADMIN_EMAILS,
-        "free_used": 0,
-        "bonus_credits": 0,
+        "free_used": 0, "bonus_credits": 0,
         "created_at": _now().isoformat(),
     })
     token = await _create_session(user_id, response)
-    user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0})
-    return {"user": user_doc, "session_token": token}
+    doc = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0})
+    return {"user": doc, "session_token": token}
 
 @api_router.post("/auth/login")
 async def auth_login(payload: EmailAuthRequest, response: Response):
     email = payload.email.strip().lower()
-    user_doc = await db.users.find_one({"email": email})
-    if not user_doc or not user_doc.get("password_hash"):
+    doc = await db.users.find_one({"email": email})
+    if not doc or not doc.get("password_hash"):
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    if not verify_password(payload.password, user_doc["password_hash"]):
+    if not verify_password(payload.password, doc["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    if email in ADMIN_EMAILS and not user_doc.get("is_premium"):
+    # Ensure admin always has premium
+    if email in ADMIN_EMAILS and not doc.get("is_premium"):
         await db.users.update_one({"email": email}, {"$set": {"is_premium": True}})
-        user_doc["is_premium"] = True
-    token = await _create_session(user_doc["user_id"], response)
-    user_doc.pop("_id", None)
-    user_doc.pop("password_hash", None)
-    return {"user": user_doc, "session_token": token}
+        doc["is_premium"] = True
+    token = await _create_session(doc["user_id"], response)
+    doc.pop("_id", None)
+    doc.pop("password_hash", None)
+    return {"user": doc, "session_token": token}
 
 @api_router.post("/auth/session")
 async def auth_session_exchange(payload: dict, response: Response):
+    """Exchange Emergent Google OAuth session_id for a SmartGiaoAn session."""
     session_id = payload.get("session_id")
     if not session_id:
         raise HTTPException(status_code=400, detail="session_id required")
@@ -287,39 +280,40 @@ async def auth_session_exchange(payload: dict, response: Response):
         async with httpx.AsyncClient(timeout=10.0) as hx:
             r = await hx.get(f"https://auth.emergentagent.com/api/session/{session_id}")
             r.raise_for_status()
-            emergent_user = r.json()
-    except Exception as exc:
-        logger.error(f"Emergent auth error: {exc}")
+            eu = r.json()
+    except Exception as e:
+        logger.error(f"Emergent auth error: {e}")
         raise HTTPException(status_code=401, detail="Invalid or expired Google session")
-    email = emergent_user.get("email", "").strip().lower()
+
+    email = eu.get("email", "").strip().lower()
     if not email:
-        raise HTTPException(status_code=400, detail="No email returned from Google session")
-    user_doc = await db.users.find_one({"email": email})
-    if not user_doc:
+        raise HTTPException(status_code=400, detail="No email in Google session")
+
+    doc = await db.users.find_one({"email": email})
+    if not doc:
         user_id = f"user_{uuid.uuid4().hex[:12]}"
-        user_doc = {
-            "user_id": user_id,
-            "email": email,
-            "name": emergent_user.get("name", email.split("@")[0]),
-            "picture": emergent_user.get("picture", ""),
+        doc = {
+            "user_id": user_id, "email": email,
+            "name": eu.get("name", email.split("@")[0]),
+            "picture": eu.get("picture", ""),
             "role": "Teacher",
             "is_premium": email in ADMIN_EMAILS,
-            "free_used": 0,
-            "bonus_credits": 0,
+            "free_used": 0, "bonus_credits": 0,
             "created_at": _now().isoformat(),
         }
-        await db.users.insert_one(user_doc)
+        await db.users.insert_one(doc)
         logger.info(f"New Google user: {email}")
     else:
-        update = {"picture": emergent_user.get("picture", user_doc.get("picture", ""))}
+        update = {"picture": eu.get("picture", doc.get("picture", ""))}
         if email in ADMIN_EMAILS:
             update["is_premium"] = True
         await db.users.update_one({"email": email}, {"$set": update})
-        user_doc = await db.users.find_one({"email": email}, {"_id": 0})
-    token = await _create_session(user_doc["user_id"], response)
-    user_doc.pop("_id", None)
-    user_doc.pop("password_hash", None)
-    return {"user": user_doc, "session_token": token}
+        doc = await db.users.find_one({"email": email}, {"_id": 0})
+
+    token = await _create_session(doc["user_id"], response)
+    doc.pop("_id", None)
+    doc.pop("password_hash", None)
+    return {"user": doc, "session_token": token}
 
 @api_router.get("/auth/me")
 async def auth_me(user: User = Depends(require_user)):
@@ -336,15 +330,15 @@ async def auth_logout(response: Response, session_token: Optional[str] = Cookie(
 async def update_profile(payload: ProfileUpdateRequest, user: User = Depends(require_user)):
     await db.users.update_one(
         {"user_id": user.user_id},
-        {"$set": {"teaching_level": payload.teaching_level, "class_size": payload.class_size, "focus_area": payload.focus_area}},
+        {"$set": {"teaching_level": payload.teaching_level, "class_size": payload.class_size, "focus_area": payload.focus_area}}
     )
     return await db.users.find_one({"user_id": user.user_id}, {"_id": 0, "password_hash": 0})
 
 @api_router.get("/auth/export")
 async def export_account(user: User = Depends(require_user)):
-    user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0, "password_hash": 0})
+    doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0, "password_hash": 0})
     worksheets = await db.worksheets.find({"user_id": user.user_id}, {"_id": 0}).to_list(1000)
-    return {"user": user_doc, "worksheets": worksheets}
+    return {"user": doc, "worksheets": worksheets}
 
 @api_router.delete("/auth/delete-account")
 async def delete_account(user: User = Depends(require_user), response: Response = None):
@@ -353,25 +347,28 @@ async def delete_account(user: User = Depends(require_user), response: Response 
     await db.user_sessions.delete_many({"user_id": user.user_id})
     if response:
         response.delete_cookie("session_token", path="/")
-    logger.info(f"Account deleted: {user.user_id}")
     return {"ok": True}
+
+# ============================================================
+# WORKSHEET ROUTES
+# ============================================================
 
 @api_router.post("/worksheets/generate")
 async def generate_worksheet(req: WorksheetRequest, user: Optional[User] = Depends(get_current_user_optional)):
     if not GEMINI_API_KEY:
         raise HTTPException(status_code=500, detail="Gemini API key not configured")
     is_admin = _is_admin(user)
-    logger.info(f"Generate | user={user.user_id if user else 'anon'} | premium={user.is_premium if user else 'n/a'} | admin={is_admin}")
     if user and not user.is_premium and not is_admin:
         allowance = FREE_QUOTA + (user.bonus_credits or 0)
         if user.free_used >= allowance:
-            raise HTTPException(status_code=402, detail=f"Free quota of {allowance} exceeded. Upgrade or watch an ad.")
+            raise HTTPException(status_code=402, detail=f"Quota of {allowance} exceeded. Upgrade or watch an ad.")
+
     grammar_line = f"\nGrammar focus: {req.grammar_focus}" if req.grammar_focus else ""
     prompt = (
-        f"Create a complete 3-page Cambridge-style ESL worksheet.\n"
-        f"Level: {req.level}\nCEFR: {req.cefr}\nSkill focus: {req.skill}\nTopic: {req.topic}\n"
-        f"Number of questions: {req.num_questions}{grammar_line}\n\n"
-        f"Use Vietnamese names, locations, and cultural contexts. Full answer key required. Min 3 A4 pages."
+        f"Create a complete 3-page Cambridge ESL worksheet.\n"
+        f"Level: {req.level} | CEFR: {req.cefr} | Skill: {req.skill} | Topic: {req.topic}\n"
+        f"Questions: {req.num_questions}{grammar_line}\n"
+        f"Vietnamese names/locations/culture throughout. Full answer key. Min 3 A4 pages."
     )
     try:
         content = await _run_gemini(prompt)
@@ -380,6 +377,7 @@ async def generate_worksheet(req: WorksheetRequest, user: Optional[User] = Depen
     except Exception:
         logger.exception("Gemini failed")
         raise HTTPException(status_code=502, detail="AI generation failed - please retry")
+
     worksheet_id = f"ws_{uuid.uuid4().hex[:12]}"
     doc = {
         "worksheet_id": worksheet_id,
@@ -389,8 +387,11 @@ async def generate_worksheet(req: WorksheetRequest, user: Optional[User] = Depen
         "content": content, "is_public": True, "created_at": _now().isoformat(),
     }
     await db.worksheets.insert_one(doc)
+    logger.info(f"Worksheet: {worksheet_id} user={user.user_id if user else 'anon'} admin={is_admin}")
+
     if user and not user.is_premium and not is_admin:
         await db.users.update_one({"user_id": user.user_id}, {"$inc": {"free_used": 1}})
+
     doc.pop("_id", None)
     return doc
 
@@ -412,11 +413,15 @@ async def get_worksheet(worksheet_id: str, user: Optional[User] = Depends(get_cu
 async def delete_worksheet(worksheet_id: str, user: User = Depends(require_user)):
     doc = await db.worksheets.find_one({"worksheet_id": worksheet_id}, {"_id": 0})
     if not doc:
-        raise HTTPException(status_code=404, detail="Worksheet not found")
+        raise HTTPException(status_code=404, detail="Not found")
     if doc.get("user_id") != user.user_id and not _is_admin(user):
         raise HTTPException(status_code=403, detail="Not your worksheet")
     await db.worksheets.delete_one({"worksheet_id": worksheet_id})
     return {"ok": True}
+
+# ============================================================
+# LIBRARY
+# ============================================================
 
 @api_router.get("/library/feed")
 async def get_public_library(level: Optional[str] = None, cefr: Optional[str] = None, skill: Optional[str] = None, limit: int = 50):
@@ -427,15 +432,24 @@ async def get_public_library(level: Optional[str] = None, cefr: Optional[str] = 
     docs = await db.worksheets.find(query, {"_id": 0, "content": 0}).sort("created_at", -1).limit(min(limit, 100)).to_list(min(limit, 100))
     return docs
 
+# ============================================================
+# REWARDED ADS
+# ============================================================
+
 @api_router.post("/usage/grant-rewarded")
 async def grant_rewarded(payload: RewardedAdRequest, user: User = Depends(require_user)):
-    credits = _tier_to_credits(payload.tier)
+    credit_map = {15: 1, 30: 2, 45: 3}
+    credits = credit_map.get(int(payload.tier), 0)
     if credits == 0:
         raise HTTPException(status_code=400, detail="Invalid tier. Use 15, 30, or 45.")
     await db.users.update_one({"user_id": user.user_id}, {"$inc": {"bonus_credits": credits}})
     updated = await db.users.find_one({"user_id": user.user_id}, {"_id": 0, "password_hash": 0})
     logger.info(f"Rewarded: +{credits} to {user.user_id}")
     return {"ok": True, "credits_granted": credits, "user": updated}
+
+# ============================================================
+# BILLING
+# ============================================================
 
 @api_router.post("/billing/mark-premium")
 async def mark_premium(user: User = Depends(require_user)):
@@ -450,21 +464,27 @@ async def cancel_premium(user: User = Depends(require_user)):
     updated = await db.users.find_one({"user_id": user.user_id}, {"_id": 0, "password_hash": 0})
     return {"ok": True, "user": updated}
 
+# ============================================================
+# ADMIN
+# ============================================================
+
 @api_router.get("/admin/stats")
 async def admin_stats(user: User = Depends(require_admin)):
-    total_users = await db.users.count_documents({})
-    premium_users = await db.users.count_documents({"is_premium": True})
-    total_worksheets = await db.worksheets.count_documents({})
-    return {"total_users": total_users, "premium_users": premium_users, "free_users": total_users - premium_users, "total_worksheets": total_worksheets}
+    total = await db.users.count_documents({})
+    premium = await db.users.count_documents({"is_premium": True})
+    wsheets = await db.worksheets.count_documents({})
+    return {"total_users": total, "premium_users": premium, "free_users": total - premium, "total_worksheets": wsheets}
 
 @api_router.post("/admin/grant-premium/{user_id}")
 async def admin_grant_premium(user_id: str, admin: User = Depends(require_admin)):
-    result = await db.users.update_one({"user_id": user_id}, {"$set": {"is_premium": True}})
-    if result.matched_count == 0:
+    r = await db.users.update_one({"user_id": user_id}, {"$set": {"is_premium": True}})
+    if r.matched_count == 0:
         raise HTTPException(status_code=404, detail="User not found")
-    return {"ok": True, "user_id": user_id}
+    return {"ok": True}
 
-# ROUTER INCLUDED FIRST
+# ============================================================
+# INCLUDE ROUTER
+# ============================================================
 app.include_router(api_router)
 
 @app.get("/", include_in_schema=False)
@@ -478,16 +498,13 @@ async def health():
         db_ok = True
     except Exception:
         db_ok = False
-    return {"status": "healthy" if db_ok else "degraded", "database": "ok" if db_ok else "error", "gemini": "configured" if GEMINI_API_KEY else "missing", "admin_emails": list(ADMIN_EMAILS)}
-
-# CORS MIDDLEWARE LAST - this is correct for FastAPI/Starlette
-app.add_middleware(
-    CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=CORS_ORIGINS,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    return {
+        "status": "healthy" if db_ok else "degraded",
+        "database": "ok" if db_ok else "error",
+        "gemini": "configured" if GEMINI_API_KEY else "missing",
+        "admin_emails": list(ADMIN_EMAILS),
+        "cors_origins": CORS_ORIGINS,
+    }
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
