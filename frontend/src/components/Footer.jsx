@@ -1,60 +1,43 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useI18n } from '../lib/i18n';
-import { LangToggle } from './LangToggle';
 
 export function Footer() {
-  const { lang } = useI18n();
-  const labels = lang === 'vi'
-    ? { product: 'Sản phẩm', features: 'Tính năng', pricing: 'Giá', dashboard: 'Bảng điều khiển',
-        company: 'Công ty', about: 'Giới thiệu', contact: 'Liên hệ', faq: 'Câu hỏi thường gặp',
-        legal: 'Pháp lý', privacy: 'Quyền riêng tư', terms: 'Điều khoản',
-        rights: 'Mọi quyền được bảo lưu.' }
-    : { product: 'Product', features: 'Features', pricing: 'Pricing', dashboard: 'Dashboard',
-        company: 'Company', about: 'About', contact: 'Contact', faq: 'FAQ',
-        legal: 'Legal', privacy: 'Privacy', terms: 'Terms',
-        rights: 'All rights reserved.' };
-
+  const { t } = useI18n();
   return (
-    <footer className="border-t border-border bg-white" data-testid="footer">
-      <div className="max-w-7xl mx-auto px-6 lg:px-10 py-16 grid grid-cols-2 md:grid-cols-4 gap-10">
-        <div className="col-span-2 md:col-span-1">
-          <div className="font-display text-2xl">SmartGiao<span className="text-terracotta">An</span></div>
-          <p className="text-sm text-muted-foreground mt-3 max-w-xs">
-            {lang === 'vi'
-              ? 'Bài tập ESL chuẩn Cambridge, dành riêng cho giáo viên Việt Nam.'
-              : 'Cambridge-aligned ESL worksheets, made for Vietnamese teachers.'}
-          </p>
-          <div className="mt-5"><LangToggle /></div>
+    <footer className="bg-white border-t border-gray-100 mt-auto">
+      <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
+        <div className="flex flex-col md:flex-row justify-between items-start gap-8">
+          <div className="max-w-xs">
+            <div className="font-serif font-black text-xl text-gray-900 mb-2">
+              Smart<span className="text-red-600">GiaoAn</span>
+            </div>
+            <p className="text-sm text-gray-500 font-medium leading-relaxed">{t('tagline')}</p>
+          </div>
+          <div className="flex flex-wrap gap-x-10 gap-y-4 text-sm font-bold text-gray-500">
+            <div className="space-y-2">
+              <p className="text-xs uppercase tracking-widest text-gray-400 font-black">Product</p>
+              <Link to="/dashboard" className="block hover:text-black transition-colors">{t('dashboard')}</Link>
+              <Link to="/library" className="block hover:text-black transition-colors">Library</Link>
+              <Link to="/levels" className="block hover:text-black transition-colors">Levels</Link>
+              <Link to="/pricing" className="block hover:text-black transition-colors">Pricing</Link>
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs uppercase tracking-widest text-gray-400 font-black">Company</p>
+              <Link to="/about" className="block hover:text-black transition-colors">About</Link>
+              <Link to="/contact" className="block hover:text-black transition-colors">Contact</Link>
+              <Link to="/faq" className="block hover:text-black transition-colors">FAQ</Link>
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs uppercase tracking-widest text-gray-400 font-black">Legal</p>
+              <Link to="/privacy" className="block hover:text-black transition-colors">Privacy</Link>
+              <Link to="/terms" className="block hover:text-black transition-colors">Terms</Link>
+            </div>
+          </div>
         </div>
-        <div>
-          <p className="overline mb-4">{labels.product}</p>
-          <ul className="space-y-2 text-sm">
-            <li><Link to="/#how" className="hover:text-terracotta">{labels.features}</Link></li>
-            <li><Link to="/pricing" className="hover:text-terracotta">{labels.pricing}</Link></li>
-            <li><Link to="/dashboard" className="hover:text-terracotta">{labels.dashboard}</Link></li>
-          </ul>
-        </div>
-        <div>
-          <p className="overline mb-4">{labels.company}</p>
-          <ul className="space-y-2 text-sm">
-            <li><Link to="/about" className="hover:text-terracotta">{labels.about}</Link></li>
-            <li><Link to="/contact" className="hover:text-terracotta">{labels.contact}</Link></li>
-            <li><Link to="/faq" className="hover:text-terracotta">{labels.faq}</Link></li>
-          </ul>
-        </div>
-        <div>
-          <p className="overline mb-4">{labels.legal}</p>
-          <ul className="space-y-2 text-sm">
-            <li><Link to="/privacy" className="hover:text-terracotta">{labels.privacy === 'Privacy' ? 'Privacy & Trust' : 'Bảo mật & Lòng tin'}</Link></li>
-            <li><Link to="/terms" className="hover:text-terracotta">{labels.terms === 'Terms' ? 'Terms & Fair Use' : 'Điều khoản'}</Link></li>
-          </ul>
-        </div>
-      </div>
-      <div className="border-t border-border">
-        <div className="max-w-7xl mx-auto px-6 lg:px-10 py-6 text-xs text-muted-foreground flex flex-col sm:flex-row justify-between gap-2">
-          <span>© {new Date().getFullYear()} SmartGiaoAn — {labels.rights}</span>
-          <span className="font-mono tracking-widest">smartgiaoan.site · VN · ESL</span>
+        <div className="border-t border-gray-100 mt-8 pt-6 flex flex-col sm:flex-row justify-between items-center gap-2 text-xs text-gray-400 font-medium">
+          <p>© {new Date().getFullYear()} SmartGiaoAn. All rights reserved.</p>
+          <p>Made with love for teachers in Vietnam 🇻🇳</p>
         </div>
       </div>
     </footer>
