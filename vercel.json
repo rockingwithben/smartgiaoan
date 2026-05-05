@@ -2,18 +2,21 @@
   "version": 2,
   "builds": [
     {
-      "src": "backend/server.py",
-      "use": "@vercel/python"
+      "src": "frontend/package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "frontend/build"
+      }
     }
   ],
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "backend/server.py"
+      "dest": "https://smartgiaoan-backend.onrender.com/api/$1"
     },
     {
-      "src": "/health",
-      "dest": "backend/server.py"
+      "src": "/(.*)",
+      "dest": "/index.html"
     }
   ]
 }
