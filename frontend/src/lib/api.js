@@ -1,7 +1,23 @@
 import axios from 'axios';
 import { toast } from 'sonner';
 
-const backendUrl = (process.env.REACT_APP_BACKEND_URL || window.location.origin).replace(/\/+$/, '');
+function resolveBackendUrl() {
+  const envUrl = process.env.REACT_APP_BACKEND_URL;
+  if (envUrl) return envUrl.replace(/\/+$/, '');
+
+  const { protocol, hostname, port } = window.location;
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return `${protocol}//${hostname}${port ? `:${port}` : ''}`;
+  }
+
+  if (hostname === 'www.smartgiaoan.site' || hostname === 'smartgiaoan.site') {
+    return `${protocol}//api.smartgiaoan.site`;
+  }
+
+  return window.location.origin.replace(/\/+$/, '');
+}
+
+const backendUrl = resolveBackendUrl();
 export const API = `${backendUrl}/api`;
 
 export const http = axios.create({
