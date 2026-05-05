@@ -2,7 +2,7 @@ import axios from 'axios';
 
 const BASE = process.env.REACT_APP_BACKEND_URL
   ? process.env.REACT_APP_BACKEND_URL.replace(/\/$/, '')
-  : window.location.origin;
+  : 'https://smartgiaoan-backend.onrender.com';
 
 export const API = `${BASE}/api`;
 
@@ -46,16 +46,11 @@ export async function listWorksheets() {
 }
 
 export async function grantRewarded(tier) {
-  const r = await http.post('/usage/grant-rewarded', { tier: Number(tier) });
+  const r = await http.post('/usage/grant-rewarded', { tier });
   return r.data;
 }
 
 export async function markPremium() {
   const r = await http.post('/billing/mark-premium');
-  return r.data;
-}
-
-export async function updateProfile(payload) {
-  const r = await http.put('/auth/profile', payload);
   return r.data;
 }
