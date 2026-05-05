@@ -1,9 +1,8 @@
 import React, { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { I18nProvider } from './lib/i18n';
 import { AuthProvider } from './lib/auth';
-
 import Landing from './pages/Landing';
 import Dashboard from './pages/Dashboard';
 import AuthCallback from './pages/AuthCallback';
@@ -24,38 +23,35 @@ import { CookieConsent } from './components/CookieConsent';
 import './App.css';
 
 function OAuthGate({ children }) {
-  const location = useLocation();
-  const navigate = useNavigate();
-
-  useEffect(() => {
+  var location = useLocation();
+  var navigate = useNavigate();
+  useEffect(function() {
     if (location.hash && location.hash.includes('session_id=')) {
       navigate('/auth/callback' + location.hash, { replace: true });
     }
   }, [location.hash, navigate]);
-
   if (location.hash && location.hash.includes('session_id=')) return null;
   return children;
 }
 
-function AuthSuccessRedirect() {
-  return <Navigate to="/dashboard" replace />;
-}
-
 function AppRouter() {
+  var navigate = useNavigate();
   return (
     <OAuthGate>
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/levels" element={<Levels />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
-        <Route path="/login" element={<AuthModal />} />
-        <Route path="/auth/success" element={<AuthSuccessRedirect />} />
-        <Route path="/register" element={<AuthModal />} />
+        <Route path="/login" element={
+          <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+            <AuthModal onLoginSuccess={function() { navigate('/dashboard', { replace: true }); }} />
+          </div>
+        } />
         <Route path="/library" element={<PublicLibrary />} />
         <Route path="/worksheet/:id" element={<WorksheetView />} />
-        <Route path="/levels" element={<Levels />} />
-        <Route path="/account" element={<Account />} />
         <Route path="/profile" element={<ProfileSettings />} />
+        <Route path="/account" element={<Account />} />
         <Route path="/about" element={<About />} />
         <Route path="/pricing" element={<Pricing />} />
         <Route path="/faq" element={<FAQ />} />
@@ -64,8 +60,6 @@ function AppRouter() {
         <Route path="/terms" element={<Terms />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
-      <CookieConsent />
-      <Toaster position="top-right" richColors />
     </OAuthGate>
   );
 }
@@ -76,6 +70,8 @@ function App() {
       <BrowserRouter>
         <AuthProvider>
           <AppRouter />
+          <CookieConsent />
+          <Toaster position="bottom-right" richColors closeButton toastOptions={{ duration: 4000 }} />
         </AuthProvider>
       </BrowserRouter>
     </I18nProvider>
