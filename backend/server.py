@@ -41,6 +41,14 @@ ADMIN_EMAILS = set(
     if e.strip()
 )
 FREE_QUOTA = int(os.environ.get('FREE_QUOTA', '3'))
+CORS_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get(
+        'CORS_ORIGINS',
+        'https://smartgiaoan.site,https://www.smartgiaoan.site,http://localhost:3000,http://127.0.0.1:3000'
+    ).split(',')
+    if origin.strip()
+]
 
 app = FastAPI(title="SmartGiaoAn API", version="2.0.0")
 api_router = APIRouter(prefix="/api")
@@ -476,11 +484,7 @@ async def health():
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=[
-        "https://smartgiaoan.site",
-        "https://www.smartgiaoan.site",
-        "http://localhost:3000",
-    ],
+    allow_origins=CORS_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
