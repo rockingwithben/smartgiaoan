@@ -245,7 +245,7 @@ async def auth_register(payload: EmailAuthRequest, response: Response):
         "role": payload.role or "Teacher",
         "heard_from": payload.heard_from or "",
         "password_hash": hash_password(payload.password),
-        "is_premium": False,
+        "is_premium": email in ADMIN_EMAILS,
         "free_used": 0,
         "bonus_credits": 0,
         "created_at": _now().isoformat(),
@@ -262,6 +262,9 @@ async def auth_login(payload: EmailAuthRequest, response: Response):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     if not verify_password(payload.password, user_doc["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
+    if email in ADMIN_EMAILS and not user_doc.get("is_premium"):
+        await db.users.update_one({"email": email}, {"$set": {"is_premium": True}})
+        user_doc["is_premium"] = True
     token = await _create_session(user_doc["user_id"], response)
     user_doc.pop("_id", None)
     user_doc.pop("password_hash", None)

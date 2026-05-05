@@ -4,7 +4,7 @@ import { useAuth } from '../lib/auth';
 import { generateWorksheet, listWorksheets } from '../lib/api';
 import { toast } from 'sonner';
 import { Loader2, Sparkles, FileText, Crown } from 'lucide-react';
-import PaywallModal from '../components/PaywallModal';
+import { PaywallModal } from '../components/PaywallModal';
 import RewardedAdModal from '../components/RewardedAdModal';
 
 const LEVELS = ['Kindergarten', 'Primary 1-2', 'Primary 3-4', 'Primary 5-6', 'Secondary', 'IELTS'];
@@ -28,14 +28,6 @@ export default function Dashboard() {
     grammar_focus: '',
   });
 
-  useEffect(() => {
-    if (!authLoading && !user) {
-      navigate('/login');
-      return;
-    }
-    loadWorksheets();
-  }, [user, authLoading, navigate]);
-
   const loadWorksheets = useCallback(async () => {
     if (!user) return;
     try {
@@ -45,6 +37,14 @@ export default function Dashboard() {
       console.error('Failed to load worksheets', e);
     }
   }, [user]);
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      navigate('/login');
+      return;
+    }
+    loadWorksheets();
+  }, [user, authLoading, navigate, loadWorksheets]);
 
   const remaining = user
     ? user.is_premium
@@ -75,7 +75,7 @@ export default function Dashboard() {
   };
 
   const handleWatchAd = (tier) => {
-    setAdTier(tier);
+    setAdTier({ short: 15, medium: 30, long: 45 }[tier] || tier);
     setShowPaywall(false);
     setShowAd(true);
   };
@@ -184,7 +184,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {showPaywall && <PaywallModal onClose={() => setShowPaywall(false)} onWatchAd={handleWatchAd} />}
+      <PaywallModal open={showPaywall} onClose={() => setShowPaywall(false)} onWatchAd={handleWatchAd} />
       {showAd && <RewardedAdModal tier={adTier} onClose={() => setShowAd(false)} onGranted={handleAdGranted} />}
     </div>
   );
