@@ -39,12 +39,8 @@ export function AuthProvider({ children }) {
   }, []);
 
   const startLogin = useCallback(() => {
-    // DISABLED: Emergent Google OAuth broken externally
-    // const redirectUrl = window.location.origin + '/dashboard';
-    // window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
-    
-    // FALLBACK: Use email login instead
-    window.location.href = '/login';
+    const redirectUrl = window.location.origin + '/auth/callback';
+    window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
   }, []);
 
   const logout = useCallback(async () => {
