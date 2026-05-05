@@ -1,6 +1,41 @@
 import React, { useState } from 'react';
 import { useAuth } from '../lib/auth';
 
+// UserAvatar component exported for use in other pages
+export function UserAvatar({ user, size = 'md' }) {
+  const sizeClasses = {
+    sm: 'w-8 h-8 text-xs',
+    md: 'w-10 h-10 text-sm',
+    lg: 'w-12 h-12 text-base',
+  };
+
+  const initials = user?.name
+    ? user.name
+        .split(' ')
+        .map((n) => n[0])
+        .join('')
+        .toUpperCase()
+    : '?';
+
+  if (user?.picture) {
+    return (
+      <img
+        src={user.picture}
+        alt={user.name || 'User'}
+        className={`${sizeClasses[size]} rounded-full object-cover`}
+      />
+    );
+  }
+
+  return (
+    <div
+      className={`${sizeClasses[size]} rounded-full bg-red-600 text-white font-bold flex items-center justify-center`}
+    >
+      {initials}
+    </div>
+  );
+}
+
 export default function AuthModal({ onLoginSuccess = () => {} }) {
   const { startLogin } = useAuth();
   const [isSignUp, setIsSignUp] = useState(false);
