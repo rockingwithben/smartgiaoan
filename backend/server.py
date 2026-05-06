@@ -173,7 +173,7 @@ async def require_user(user: Optional[User] = Depends(get_current_user_optional)
     return user
 
 # ============================================================
-# GEMINI & DYNAMIC PEDAGOGY ENGINE
+# GEMINI ENGINE (UNIVERSAL FALLBACK VERSION)
 # ============================================================
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
 if GEMINI_API_KEY:
@@ -187,7 +187,7 @@ Rules:
 - Use Vietnamese names: Minh, Lan, Huy, Thao, Nam, Linh, Duc, Mai.
 - Use Vietnamese locations: Hanoi, Hoan Kiem, West Lake, Sapa, Da Lat.
 - Include Vietnamese culture: Tet, banh mi, pho, ao dai, Mid-Autumn Festival.
-- OUTPUT MUST BE RAW, VALID JSON ONLY. Do not use markdown code blocks.
+- OUTPUT MUST BE RAW, VALID JSON ONLY. Do not wrap in markdown.
 """
     if "Kindergarten" in level:
         base_prompt += "\n- KINDERGARTEN OVERRIDE: Prioritize large visual placeholders, alphabet tracing, and TPR game ideas. Extremely simple vocab only."
@@ -200,28 +200,40 @@ Rules:
 
 async def _run_gemini(prompt: str, level: str) -> dict:
     dynamic_instruction = build_system_prompt(level)
-    model = genai.GenerativeModel(
-        model_name="gemini-1.5-flash-latest", # 2000% FIX: Corrected Google API Model String
-        system_instruction=dynamic_instruction,
-        generation_config={"response_mime_type": "application/json", "temperature": 0.8},
-    )
     
+    # 2000% FIX: Combine the prompt manually because 'gemini-pro' doesn't support system_instruction
+    full_prompt = f"{dynamic_instruction}\n\nUSER REQUEST:\n{prompt}"
+    
+    # 2000% FIX: Fallback to the globally available, universally supported gemini-pro
+    model = genai.GenerativeModel(model_name="gemini-pro")
+    
+    last_error = ""
     for attempt in range(3):
         try:
-            result = await asyncio.to_thread(model.generate_content, prompt)
+            result = await asyncio.to_thread(model.generate_content, full_prompt)
             raw_text = result.text.strip()
             
+            # Bulletproof markdown stripping
             if raw_text.startswith("```json"):
-                raw_text = raw_text[7:-3].strip()
-            elif raw_text.startswith("```"):
-                raw_text = raw_text[3:-3].strip()
+                raw_text = raw_text[7:]
+            if raw_text.startswith("```"):
+                raw_text = raw_text[3:]
+            if raw_text.endswith("```"):
+                raw_text = raw_text[:-3]
                 
+            raw_text = raw_text.strip()
             return json.loads(raw_text)
+            
+        except json.JSONDecodeError as je:
+            last_error = f"JSON Parsing Error. The AI generated invalid format. Detail: {je}"
+            logger.error(last_error)
         except Exception as e:
-            if attempt == 2:
-                logger.error(f"Gemini failed after 3 attempts: {e}")
-                raise HTTPException(status_code=500, detail=f"AI Engine failed: {str(e)}")
-            await asyncio.sleep(1)
+            last_error = f"Google API Error: {str(e)}"
+            logger.error(last_error)
+            
+        await asyncio.sleep(1)
+        
+    raise HTTPException(status_code=500, detail=f"AI Engine failed: {last_error}")
 
 # ============================================================
 # API ROUTES
@@ -271,9 +283,8 @@ async def auth_session_exchange(payload: SessionExchangeRequest, response: Respo
         raise HTTPException(status_code=400, detail="Missing session ID")
 
     try:
-        # 2000% FIX: Added trust_env=False to block Render's hidden proxy variables
         async with httpx.AsyncClient(timeout=30.0, follow_redirects=True, trust_env=False) as hx:
-            url = f"https://auth.emergentagent.com/api/session/{sid}"
+            url = f"[https://auth.emergentagent.com/api/session/](https://auth.emergentagent.com/api/session/){sid}"
             r = await hx.get(url, headers={"Accept": "application/json", "User-Agent": "SmartGiaoAn-Backend/1.0"})
             
             if r.status_code == 404:
