@@ -8,3 +8,9 @@ models:
     model: phi
 
 default_model: Local Phi
+models:
+  - name: Local Coder
+    provider: ollama
+    model: qwen2.5-coder:7b
+
+default_model: Local Coder
