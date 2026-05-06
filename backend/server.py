@@ -64,9 +64,6 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="SmartGiaoAn API", version="2.0.0", lifespan=lifespan)
 api_router = APIRouter(prefix="/api")
 
-# ============================================================
-# PASSWORD HASHING (Manual Auth Logic)
-# ============================================================
 def hash_password(password: str) -> str:
     salt = secrets.token_hex(16)
     h = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000).hex()
@@ -144,7 +141,6 @@ async def _create_session(user_id: str, response: Response) -> str:
     )
     return token
 
-# FIX: Ironclad Auth Header Extraction (Defeats Safari/Chrome Cookie Blockers)
 async def get_current_user_optional(
     request: Request,
     session_token: Optional[str] = Cookie(None),
@@ -153,12 +149,10 @@ async def get_current_user_optional(
     
     token = session_token
     
-    # Aggressively check for the Bearer token in the Authorization header
     if authorization and authorization.lower().startswith("bearer "):
         token = authorization.split(" ", 1)[1].strip()
         
     if not token:
-        # Fallback check directly in the request headers
         auth_header = request.headers.get("Authorization")
         if auth_header and auth_header.lower().startswith("bearer "):
             token = auth_header.split(" ", 1)[1].strip()
@@ -253,50 +247,73 @@ async def auth_register(payload: EmailAuthRequest, response: Response):
     }
     await db.users.insert_one(doc)
     token = await _create_session(user_id, response)
-    return {"user": {k:v for k,v in doc.items() if k != "password_hash"}, "session_token": token}
+    
+    # 2000% FIX: Cleanly strip MongoDB _id and hashes before responding
+    safe_user = {k: v for k, v in doc.items() if k not in ["_id", "password_hash"]}
+    return {"user": safe_user, "session_token": token}
 
 @api_router.post("/auth/login")
 async def auth_login(payload: EmailAuthRequest, response: Response):
     email = payload.email.strip().lower()
     doc = await db.users.find_one({"email": email})
+    
     if not doc or not doc.get("password_hash") or not verify_password(payload.password, doc["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     token = await _create_session(doc["user_id"], response)
-    return {"user": {k:v for k,v in doc.items() if k != "password_hash"}, "session_token": token}
+    safe_user = {k: v for k, v in doc.items() if k not in ["_id", "password_hash"]}
+    return {"user": safe_user, "session_token": token}
 
 # --- GOOGLE OAUTH EXCHANGE ---
 @api_router.post("/auth/session")
 async def auth_session_exchange(payload: SessionExchangeRequest, response: Response):
+    sid = payload.session_id.strip()
+    if not sid:
+        raise HTTPException(status_code=400, detail="Missing session ID")
+
     try:
         async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as hx:
-            url = f"https://auth.emergentagent.com/api/session/{payload.session_id}"
-            r = await hx.get(url, headers={"Accept": "application/json"})
+            url = f"https://auth.emergentagent.com/api/session/{sid}"
+            r = await hx.get(url, headers={"Accept": "application/json", "User-Agent": "SmartGiaoAn-Backend/1.0"})
+            
+            if r.status_code == 404:
+                raise HTTPException(status_code=401, detail="Google Session ID was already consumed. Try clicking Google Login again.")
+            
             r.raise_for_status()
             eu = r.json()
+            
+    except HTTPException:
+        raise
+    except httpx.HTTPStatusError as e:
+        logger.error(f"Emergent HTTP Error: {e.response.status_code} - {e.response.text}")
+        raise HTTPException(status_code=401, detail=f"Auth Broker Error {e.response.status_code}: {e.response.text}")
     except Exception as e:
-        logger.error(f"Auth Service Failure: {str(e)}")
-        raise HTTPException(status_code=401, detail="Google authentication expired. Please sign in again.")
+        logger.error(f"Emergent Connection Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Connection Timeout to Auth Server: {str(e)}")
 
     email = eu.get("email", "").strip().lower()
     doc = await db.users.find_one({"email": email})
+    
     if not doc:
         user_id = f"user_{uuid.uuid4().hex[:12]}"
         doc = {
-            "user_id": user_id, "email": email,
-            "name": eu.get("name", email.split("@")[0]),
-            "picture": eu.get("picture", ""),
-            "role": "Teacher",
-            "is_premium": email in ADMIN_EMAILS,
-            "free_used": 0, "bonus_credits": 0,
-            "created_at": _now().isoformat(),
+            "user_id": user_id, "email": email, 
+            "name": eu.get("name", email.split("@")[0]), 
+            "picture": eu.get("picture", ""), 
+            "role": "Teacher", 
+            "is_premium": email in ADMIN_EMAILS, 
+            "free_used": 0, "bonus_credits": 0, 
+            "created_at": _now().isoformat()
         }
         await db.users.insert_one(doc)
     else:
         await db.users.update_one({"email": email}, {"$set": {"picture": eu.get("picture", doc.get("picture", ""))}})
+        # Re-fetch document to get updated state and clear any stale data
+        doc = await db.users.find_one({"email": email})
 
     token = await _create_session(doc["user_id"], response)
-    return {"user": {k:v for k,v in doc.items() if k != "_id"}, "session_token": token}
+    safe_user = {k: v for k, v in doc.items() if k not in ["_id", "password_hash"]}
+    return {"user": safe_user, "session_token": token}
 
 @api_router.get("/auth/me")
 async def auth_me(user: User = Depends(require_user)):
@@ -313,6 +330,18 @@ async def auth_logout(response: Response, request: Request):
     response.delete_cookie("session_token")
     return {"status": "logged_out"}
 
+@api_router.get("/auth/export")
+async def export_account(user: User = Depends(require_user)):
+    worksheets = await db.worksheets.find({"user_id": user.user_id}, {"_id": 0}).to_list(None)
+    return {"user": user.model_dump(), "worksheets": worksheets}
+
+@api_router.delete("/auth/delete-account")
+async def delete_account(user: User = Depends(require_user)):
+    await db.users.delete_one({"user_id": user.user_id})
+    await db.worksheets.delete_many({"user_id": user.user_id})
+    await db.user_sessions.delete_many({"user_id": user.user_id})
+    return {"status": "deleted"}
+
 # --- WORKSHEETS ---
 @api_router.post("/worksheets/generate")
 async def generate_ws(payload: WorksheetRequest, user: User = Depends(require_user)):
@@ -325,15 +354,18 @@ async def generate_ws(payload: WorksheetRequest, user: User = Depends(require_us
 
     ws_id = f"ws_{uuid.uuid4().hex[:12]}"
     ws_doc = {
-        "worksheet_id": ws_id, "user_id": user.user_id,
-        "title": f"{payload.topic} - {payload.skill}",
-        "level": payload.level, "cefr": payload.cefr, "skill": payload.skill,
+        "worksheet_id": ws_id, "user_id": user.user_id, 
+        "title": f"{payload.topic} - {payload.skill}", 
+        "level": payload.level, "cefr": payload.cefr, "skill": payload.skill, 
         "content": ws_data, "is_public": True, "created_at": _now().isoformat()
     }
+    
     await db.worksheets.insert_one(ws_doc)
+    
     if not user.is_premium:
         await db.users.update_one({"user_id": user.user_id}, {"$inc": {"free_used": 1}})
-    return {k:v for k,v in ws_doc.items() if k != "_id"}
+        
+    return {k: v for k, v in ws_doc.items() if k != "_id"}
 
 @api_router.get("/worksheets")
 async def list_ws(user: User = Depends(require_user)):
@@ -358,7 +390,9 @@ app.include_router(api_router)
 app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 @app.get("/")
-async def root(): return {"app": "SmartGiaoAn API", "status": "operational"}
+async def root():
+    return {"app": "SmartGiaoAn API", "status": "operational"}
 
 @app.get("/health")
-async def health(): return {"status": "healthy", "db": "connected" if mongo_client else "disconnected"}
+async def health():
+    return {"status": "healthy", "db": "connected" if mongo_client else "disconnected"}
