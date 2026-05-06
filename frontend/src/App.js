@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
+import React from 'react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { I18nProvider } from './lib/i18n';
 import { AuthProvider } from './lib/auth';
@@ -22,21 +22,9 @@ import WorksheetView from './pages/WorksheetView';
 import { CookieConsent } from './components/CookieConsent';
 import './App.css';
 
-function OAuthGate({ children }) {
-  const location = useLocation();
-  const navigate = useNavigate();
-  useEffect(() => {
-    if (location.hash && location.hash.includes('session_id=')) {
-      navigate('/auth/callback' + location.hash, { replace: true });
-    }
-  }, [location.hash, navigate]);
-  if (location.hash && location.hash.includes('session_id=')) return null;
-  return children;
-}
-
 function AppRouter() {
   return (
-    <OAuthGate>
+    <>
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/dashboard" element={<Dashboard />} />
@@ -56,7 +44,7 @@ function AppRouter() {
       </Routes>
       <CookieConsent />
       <Toaster position="top-center" richColors />
-    </OAuthGate>
+    </>
   );
 }
 
