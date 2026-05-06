@@ -122,16 +122,25 @@ async def _create_session(user_id: str, response: Response) -> str:
     )
     return token
 
-# FIX: Failsafe Auth - explicitly checks the Authorization Header to defeat Safari/Chrome cookie blockers
+# FIX: Ironclad Auth Header Extraction
 async def get_current_user_optional(
     request: Request,
     session_token: Optional[str] = Cookie(None),
     authorization: Optional[str] = Header(None)
 ) -> Optional[User]:
+    
     token = session_token
-    if authorization and authorization.startswith("Bearer "):
-        token = authorization.split(" ")[1]
+    
+    # Aggressively check for the Bearer token in the Authorization header
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1].strip()
         
+    if not token:
+        # Fallback check directly in the request headers just in case
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.lower().startswith("bearer "):
+            token = auth_header.split(" ", 1)[1].strip()
+
     if not token:
         return None
         
