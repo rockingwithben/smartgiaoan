@@ -12,6 +12,7 @@ import httpx
 import hashlib
 import secrets
 import re
+import base64
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, Any, Dict, List
@@ -29,6 +30,11 @@ logger = logging.getLogger(__name__)
 
 ADMIN_EMAILS = set(e.strip().lower() for e in os.environ.get('ADMIN_EMAILS', 'bentaylors@hotmail.co.uk').split(',') if e.strip())
 FREE_QUOTA = int(os.environ.get('FREE_QUOTA', '3'))
+
+# PayPal Config
+PAYPAL_CLIENT_ID = os.environ.get('PAYPAL_CLIENT_ID', '')
+PAYPAL_CLIENT_SECRET = os.environ.get('PAYPAL_CLIENT_SECRET', '')
+PAYPAL_BASE_URL = os.environ.get('PAYPAL_BASE_URL', 'https://api-m.sandbox.paypal.com')
 
 _cors_env = os.environ.get('CORS_ORIGINS', '')
 CORS_ORIGINS = [o.strip() for o in _cors_env.split(',') if o.strip()] or [
@@ -91,6 +97,7 @@ class User(BaseModel):
     is_premium: bool = False
     free_used: int = 0
     bonus_credits: int = 0
+    human_editor_credits: int = 0
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class WorksheetRequest(BaseModel):
@@ -113,6 +120,18 @@ class EmailAuthRequest(BaseModel):
 
 class RewardedAdRequest(BaseModel):
     tier: int
+
+class AIEditRequest(BaseModel):
+    worksheet_id: str
+    command: str
+
+class HumanEditRequest(BaseModel):
+    worksheet_id: str
+    notes: Optional[str] = ""
+
+class PayPalCaptureRequest(BaseModel):
+    order_id: str
+    product_type: str  # "premium_monthly" or "human_editor_credit"
 
 # ============================================================
 # HELPERS & AUTH DEPENDENCIES
@@ -173,32 +192,56 @@ async def require_user(user: Optional[User] = Depends(get_current_user_optional)
         raise HTTPException(status_code=401, detail="Not authenticated or session expired")
     return user
 
+async def require_premium(user: User = Depends(require_user)) -> User:
+    if not user.is_premium:
+        raise HTTPException(status_code=402, detail="Premium required. Upgrade to unlock the AI Editor.")
+    return user
+
+async def require_human_editor_credit(user: User = Depends(require_user)) -> User:
+    if user.human_editor_credits < 1:
+        raise HTTPException(status_code=402, detail="No human editor credits. Purchase a review for £5.")
+    return user
+
+# ============================================================
+# PAYPAL HELPERS
+# ============================================================
+async def verify_paypal_order(order_id: str) -> dict:
+    if not PAYPAL_CLIENT_ID or not PAYPAL_CLIENT_SECRET:
+        raise HTTPException(status_code=500, detail="PayPal credentials not configured")
+    
+    async with httpx.AsyncClient() as client:
+        auth_str = base64.b64encode(f"{PAYPAL_CLIENT_ID}:{PAYPAL_CLIENT_SECRET}".encode()).decode()
+        token_resp = await client.post(
+            f"{PAYPAL_BASE_URL}/v1/oauth2/token",
+            headers={"Authorization": f"Basic {auth_str}"},
+            data={"grant_type": "client_credentials"}
+        )
+        token_resp.raise_for_status()
+        access_token = token_resp.json()["access_token"]
+        
+        order_resp = await client.get(
+            f"{PAYPAL_BASE_URL}/v2/checkout/orders/{order_id}",
+            headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
+        )
+        order_resp.raise_for_status()
+        return order_resp.json()
+
 # ============================================================
 # GEMINI & DYNAMIC PEDAGOGY ENGINE
 # ============================================================
-# FIX 1: Properly configure ADC so genai actually receives the credentials.
-# The old code wrote the file but never called genai.configure() in the ADC branch.
-
 adc_json_raw = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS_JSON', '').strip()
 api_key = os.environ.get('GEMINI_API_KEY', '').strip()
 adc_configured = False
 
 if adc_json_raw:
     try:
-        # Validate JSON before writing to disk
         creds_dict = json.loads(adc_json_raw)
-        
         adc_path = '/tmp/gcp_adc.json'
         with open(adc_path, 'w') as f:
             json.dump(creds_dict, f)
-        
-        # FIX 2: Lock down file permissions (owner read/write only)
         os.chmod(adc_path, 0o600)
-        
-        # Point google-auth to the file
         os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = adc_path
         
-        # FIX 3: Explicitly load credentials and hand them to genai
         import google.auth
         credentials, project_id = google.auth.default()
         genai.configure(credentials=credentials)
@@ -246,13 +289,11 @@ async def _run_gemini(prompt: str, level: str) -> dict:
     last_error = ""
     for attempt in range(3):
         try:
-            # FIX 4: Add a 60-second timeout so a hung Google API call doesn't crash Render
             result = await asyncio.wait_for(
                 asyncio.to_thread(model.generate_content, prompt),
                 timeout=60.0
             )
             
-            # FIX 5: Detect blocked / empty responses before touching .text
             if not result.candidates:
                 feedback = result.prompt_feedback if hasattr(result, 'prompt_feedback') else None
                 block_reason = feedback.block_reason if feedback and hasattr(feedback, 'block_reason') else "Unknown"
@@ -269,7 +310,6 @@ async def _run_gemini(prompt: str, level: str) -> dict:
                 await asyncio.sleep(1)
                 continue
             
-            # FIX 6: More robust markdown stripping
             raw_text = re.sub(r'^```(?:json)?\s*', '', raw_text, flags=re.IGNORECASE)
             raw_text = re.sub(r'\s*```$', '', raw_text)
             raw_text = raw_text.strip()
@@ -309,7 +349,7 @@ async def auth_register(payload: EmailAuthRequest, response: Response):
         "role": payload.role or "Teacher",
         "password_hash": hash_password(payload.password),
         "is_premium": email in ADMIN_EMAILS,
-        "free_used": 0, "bonus_credits": 0,
+        "free_used": 0, "bonus_credits": 0, "human_editor_credits": 0,
         "created_at": _now().isoformat()
     }
     await db.users.insert_one(doc)
@@ -338,7 +378,6 @@ async def auth_session_exchange(payload: SessionExchangeRequest, response: Respo
         raise HTTPException(status_code=400, detail="Missing session ID")
 
     try:
-        # Trust_env=False neutralizes the Render "missing http://" bug entirely.
         async with httpx.AsyncClient(timeout=30.0, follow_redirects=True, trust_env=False) as hx:
             url = f"https://auth.emergentagent.com/api/session/{sid}"
             r = await hx.get(url, headers={"Accept": "application/json", "User-Agent": "SmartGiaoAn-Backend/1.0"})
@@ -369,7 +408,7 @@ async def auth_session_exchange(payload: SessionExchangeRequest, response: Respo
             "picture": eu.get("picture", ""), 
             "role": "Teacher", 
             "is_premium": email in ADMIN_EMAILS, 
-            "free_used": 0, "bonus_credits": 0, 
+            "free_used": 0, "bonus_credits": 0, "human_editor_credits": 0,
             "created_at": _now().isoformat()
         }
         await db.users.insert_one(doc)
@@ -393,7 +432,6 @@ async def auth_logout(response: Response, request: Request):
         token = auth_header.split(" ")[1]
     if token:
         await db.user_sessions.delete_many({"session_token": token})
-    # FIX 7: Explicit path ensures the cookie is fully cleared
     response.delete_cookie("session_token", path="/")
     return {"status": "logged_out"}
 
@@ -443,22 +481,92 @@ async def generate_ws(payload: WorksheetRequest, user: User = Depends(require_us
 async def list_ws(user: User = Depends(require_user)):
     return await db.worksheets.find({"user_id": user.user_id}, {"_id": 0}).sort("created_at", -1).to_list(100)
 
-# --- MONETIZATION ---
-@api_router.post("/usage/grant-rewarded")
-async def grant_ad_reward(payload: RewardedAdRequest, user: User = Depends(require_user)):
-    bonus = 1 if payload.tier <= 15 else 2
-    await db.users.update_one({"user_id": user.user_id}, {"$inc": {"bonus_credits": bonus}})
-    return {"status": "reward_granted", "amount": bonus}
+@api_router.get("/worksheets/{worksheet_id}")
+async def get_worksheet(worksheet_id: str, user: User = Depends(require_user)):
+    ws = await db.worksheets.find_one({"worksheet_id": worksheet_id}, {"_id": 0})
+    if not ws:
+        raise HTTPException(status_code=404, detail="Worksheet not found")
+    if ws.get("user_id") != user.user_id and not ws.get("is_public", False):
+        raise HTTPException(status_code=403, detail="This worksheet is private")
+    return ws
 
-@api_router.post("/billing/mark-premium")
-async def mark_premium(user: User = Depends(require_user)):
-    await db.users.update_one({"user_id": user.user_id}, {"$set": {"is_premium": True}})
-    return {"status": "premium_activated"}
+# --- AI EDITOR (PREMIUM PAYWALL) ---
+@api_router.post("/worksheets/ai-edit")
+async def ai_edit_worksheet(payload: AIEditRequest, user: User = Depends(require_premium)):
+    ws = await db.worksheets.find_one({"worksheet_id": payload.worksheet_id, "user_id": user.user_id})
+    if not ws:
+        raise HTTPException(status_code=404, detail="Worksheet not found")
+    
+    current_content = json.dumps(ws["content"], indent=2)
+    edit_prompt = f"""You are editing an ESL worksheet. Here is the current content:
+{current_content}
 
-# ============================================================
-# PUBLIC LIBRARY
-# ============================================================
+TEACHER'S REQUEST: {payload.command}
 
+Rules:
+- Return the FULL updated worksheet as valid JSON.
+- Preserve the existing structure (title, sections, exercises).
+- Only modify what the teacher asked for.
+- OUTPUT MUST BE RAW JSON ONLY. Do not use markdown code blocks."""
+    
+    edited_content = await _run_gemini(edit_prompt, ws["level"])
+    
+    new_ws_id = f"ws_{uuid.uuid4().hex[:12]}"
+    new_doc = {
+        "worksheet_id": new_ws_id,
+        "user_id": user.user_id,
+        "title": f"{ws['title']} (Edited)",
+        "level": ws["level"],
+        "cefr": ws["cefr"],
+        "skill": ws["skill"],
+        "topic": ws.get("topic", ""),
+        "content": edited_content,
+        "is_public": False,
+        "parent_id": payload.worksheet_id,
+        "edit_command": payload.command,
+        "created_at": _now().isoformat()
+    }
+    await db.worksheets.insert_one(new_doc)
+    return {k: v for k, v in new_doc.items() if k != "_id"}
+
+# --- HUMAN EDITOR (£5 ONE-TIME PAYWALL) ---
+@api_router.post("/worksheets/human-edit-request")
+async def request_human_edit(payload: HumanEditRequest, user: User = Depends(require_human_editor_credit)):
+    ws = await db.worksheets.find_one({"worksheet_id": payload.worksheet_id, "user_id": user.user_id})
+    if not ws:
+        raise HTTPException(status_code=404, detail="Worksheet not found")
+    
+    await db.users.update_one({"user_id": user.user_id}, {"$inc": {"human_editor_credits": -1}})
+    
+    review_doc = {
+        "review_id": f"rev_{uuid.uuid4().hex[:8]}",
+        "worksheet_id": payload.worksheet_id,
+        "user_id": user.user_id,
+        "user_email": user.email,
+        "worksheet_title": ws["title"],
+        "teacher_notes": payload.notes,
+        "status": "pending",
+        "assigned_to": None,
+        "result": None,
+        "created_at": _now().isoformat(),
+        "completed_at": None
+    }
+    await db.human_reviews.insert_one(review_doc)
+    
+    return {
+        "status": "submitted",
+        "review_id": review_doc["review_id"],
+        "message": "Your worksheet is in the review queue. Expect feedback within 24 hours."
+    }
+
+@api_router.get("/worksheets/human-edit-status/{review_id}")
+async def human_edit_status(review_id: str, user: User = Depends(require_user)):
+    review = await db.human_reviews.find_one({"review_id": review_id, "user_id": user.user_id}, {"_id": 0})
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found")
+    return review
+
+# --- PUBLIC LIBRARY ---
 @api_router.get("/library/feed")
 async def public_library_feed(
     level: Optional[str] = None,
@@ -523,6 +631,70 @@ async def clone_worksheet(worksheet_id: str, user: User = Depends(require_user))
     }
     await db.worksheets.insert_one(new_doc)
     return {"worksheet_id": new_id, "status": "cloned"}
+
+# --- MONETIZATION ---
+@api_router.post("/usage/grant-rewarded")
+async def grant_ad_reward(payload: RewardedAdRequest, user: User = Depends(require_user)):
+    bonus = 1 if payload.tier <= 15 else 2
+    await db.users.update_one({"user_id": user.user_id}, {"$inc": {"bonus_credits": bonus}})
+    return {"status": "reward_granted", "amount": bonus}
+
+@api_router.post("/billing/mark-premium")
+async def mark_premium(user: User = Depends(require_user)):
+    await db.users.update_one({"user_id": user.user_id}, {"$set": {"is_premium": True}})
+    return {"status": "premium_activated"}
+
+# --- PAYPAL PAYMENTS ---
+@api_router.post("/billing/paypal-capture")
+async def paypal_capture(payload: PayPalCaptureRequest, user: User = Depends(require_user)):
+    try:
+        order_data = await verify_paypal_order(payload.order_id)
+    except Exception as e:
+        logger.error(f"PayPal verification failed: {e}")
+        raise HTTPException(status_code=400, detail="PayPal verification failed")
+    
+    status = order_data.get("status", "")
+    if status not in ("COMPLETED", "APPROVED"):
+        raise HTTPException(status_code=400, detail=f"PayPal order not completed. Status: {status}")
+    
+    product_type = payload.product_type
+    
+    if product_type == "human_editor_credit":
+        await db.users.update_one({"user_id": user.user_id}, {"$inc": {"human_editor_credits": 1}})
+        return {"status": "success", "product": "human_editor_credit", "credits_added": 1}
+    elif product_type == "premium_monthly":
+        await db.users.update_one({"user_id": user.user_id}, {"$set": {"is_premium": True}})
+        return {"status": "success", "product": "premium_monthly", "premium_activated": True}
+    else:
+        raise HTTPException(status_code=400, detail="Unknown product type")
+
+@api_router.post("/webhooks/paypal")
+async def paypal_webhook(request: Request):
+    payload = await request.body()
+    try:
+        data = json.loads(payload)
+        event_type = data.get("event_type", "")
+        resource = data.get("resource", {})
+        
+        logger.info(f"PayPal webhook received: {event_type}")
+        
+        if event_type == "BILLING.SUBSCRIPTION.ACTIVATED":
+            custom_id = resource.get("custom_id", "")
+            if custom_id.startswith("user_"):
+                await db.users.update_one({"user_id": custom_id}, {"$set": {"is_premium": True}})
+                logger.info(f"Premium activated via PayPal subscription for {custom_id}")
+                
+        elif event_type == "BILLING.SUBSCRIPTION.CANCELLED":
+            custom_id = resource.get("custom_id", "")
+            if custom_id.startswith("user_"):
+                await db.users.update_one({"user_id": custom_id}, {"$set": {"is_premium": False}})
+                logger.info(f"Premium cancelled via PayPal subscription for {custom_id}")
+                
+    except Exception as e:
+        logger.error(f"PayPal webhook error: {e}")
+    
+    return {"status": "ok"}
+
 # ============================================================
 # MIDDLEWARE & ROUTING
 # ============================================================
