@@ -11,6 +11,7 @@ import logging
 import httpx
 import hashlib
 import secrets
+import re
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, Any, Dict, List
@@ -175,22 +176,43 @@ async def require_user(user: Optional[User] = Depends(get_current_user_optional)
 # ============================================================
 # GEMINI & DYNAMIC PEDAGOGY ENGINE
 # ============================================================
-# Check for Enterprise ADC JSON first
-adc_json = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS_JSON', '').strip()
-api_key = os.environ.get('GEMINI_API_KEY', '').strip()
+# FIX 1: Properly configure ADC so genai actually receives the credentials.
+# The old code wrote the file but never called genai.configure() in the ADC branch.
 
-if adc_json:
-    # Write the JSON to a hidden secure file on the Render server
-    adc_path = '/tmp/gcp_adc.json'
-    with open(adc_path, 'w') as f:
-        f.write(adc_json)
-    # Tell Google's libraries to use this file for authentication
-    os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = adc_path
-    logger.info("Using Enterprise ADC credentials for Google API.")
-elif api_key:
+adc_json_raw = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS_JSON', '').strip()
+api_key = os.environ.get('GEMINI_API_KEY', '').strip()
+adc_configured = False
+
+if adc_json_raw:
+    try:
+        # Validate JSON before writing to disk
+        creds_dict = json.loads(adc_json_raw)
+        
+        adc_path = '/tmp/gcp_adc.json'
+        with open(adc_path, 'w') as f:
+            json.dump(creds_dict, f)
+        
+        # FIX 2: Lock down file permissions (owner read/write only)
+        os.chmod(adc_path, 0o600)
+        
+        # Point google-auth to the file
+        os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = adc_path
+        
+        # FIX 3: Explicitly load credentials and hand them to genai
+        import google.auth
+        credentials, project_id = google.auth.default()
+        genai.configure(credentials=credentials)
+        logger.info(f"Using Enterprise ADC credentials for Google API (project: {project_id}).")
+        adc_configured = True
+    except json.JSONDecodeError:
+        logger.error("GOOGLE_APPLICATION_CREDENTIALS_JSON is not valid JSON. Falling back.")
+    except Exception as e:
+        logger.error(f"ADC setup failed: {e}. Falling back.")
+
+if not adc_configured and api_key:
     genai.configure(api_key=api_key)
     logger.info("Using standard API key.")
-else:
+elif not adc_configured and not api_key:
     logger.warning("NO GOOGLE CREDENTIALS FOUND! AI Engine will fail.")
 
 def build_system_prompt(level: str) -> str:
@@ -224,17 +246,41 @@ async def _run_gemini(prompt: str, level: str) -> dict:
     last_error = ""
     for attempt in range(3):
         try:
-            result = await asyncio.to_thread(model.generate_content, prompt)
+            # FIX 4: Add a 60-second timeout so a hung Google API call doesn't crash Render
+            result = await asyncio.wait_for(
+                asyncio.to_thread(model.generate_content, prompt),
+                timeout=60.0
+            )
+            
+            # FIX 5: Detect blocked / empty responses before touching .text
+            if not result.candidates:
+                feedback = result.prompt_feedback if hasattr(result, 'prompt_feedback') else None
+                block_reason = feedback.block_reason if feedback and hasattr(feedback, 'block_reason') else "Unknown"
+                last_error = f"Content blocked by safety filters. Reason: {block_reason}"
+                logger.warning(last_error)
+                await asyncio.sleep(1)
+                continue
+            
             raw_text = result.text.strip()
             
-            if raw_text.startswith("```json"):
-                raw_text = raw_text[7:-3].strip()
-            elif raw_text.startswith("```"):
-                raw_text = raw_text[3:-3].strip()
+            if not raw_text:
+                last_error = "Empty response from AI"
+                logger.warning(last_error)
+                await asyncio.sleep(1)
+                continue
+            
+            # FIX 6: More robust markdown stripping
+            raw_text = re.sub(r'^```(?:json)?\s*', '', raw_text, flags=re.IGNORECASE)
+            raw_text = re.sub(r'\s*```$', '', raw_text)
+            raw_text = raw_text.strip()
                 
             return json.loads(raw_text)
+            
+        except asyncio.TimeoutError:
+            last_error = "AI generation timed out after 60 seconds"
+            logger.error(last_error)
         except json.JSONDecodeError as je:
-            last_error = f"JSON Parsing Error. Detail: {je}"
+            last_error = f"JSON Parsing Error: {je}"
             logger.error(last_error)
         except Exception as e:
             last_error = f"Google API Error: {str(e)}"
@@ -347,7 +393,8 @@ async def auth_logout(response: Response, request: Request):
         token = auth_header.split(" ")[1]
     if token:
         await db.user_sessions.delete_many({"session_token": token})
-    response.delete_cookie("session_token")
+    # FIX 7: Explicit path ensures the cookie is fully cleared
+    response.delete_cookie("session_token", path="/")
     return {"status": "logged_out"}
 
 @api_router.get("/auth/export")
