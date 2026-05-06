@@ -13,7 +13,7 @@ const AvatarFallback = ({ name }) => {
 };
 
 export function Navbar() {
-  const { user, logout, startLogin } = useAuth();
+  const { user, logout } = useAuth();
   const { t, lang, setLang } = useI18n();
   const location = useLocation(); 
   
@@ -96,12 +96,13 @@ export function Navbar() {
                 )}
               </div>
             ) : (
-              <button
-                onClick={startLogin}
+              /* FIX: Restored link to manual AuthModal login page */
+              <Link
+                to="/login"
                 className="bg-black text-white text-sm font-bold px-4 py-2 rounded-xl hover:bg-gray-800 transition-colors shadow-sm"
               >
                 {t('sign_in') || 'Sign In'}
-              </button>
+              </Link>
             )}
 
             <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="md:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors focus:outline-none">
