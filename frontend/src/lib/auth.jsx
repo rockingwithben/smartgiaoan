@@ -20,7 +20,9 @@ export function AuthProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    if (window.location.hash?.includes('session_id=')) {
+    // FIX: Check both search and hash to prevent the race condition
+    const hasSessionId = window.location.search?.includes('session_id=') || window.location.hash?.includes('session_id=');
+    if (hasSessionId) {
       setLoading(false);
       return;
     }
@@ -40,7 +42,7 @@ export function AuthProvider({ children }) {
 
   const startLogin = useCallback(() => {
     const redirectUrl = window.location.origin + '/auth/callback';
-    window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;  // ← REMOVED SPACE
+    window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
   }, []);
 
   const logout = useCallback(async () => {
