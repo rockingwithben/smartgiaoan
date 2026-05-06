@@ -12,7 +12,6 @@ export default function AuthCallback() {
     if (hasProcessed.current) return;
     hasProcessed.current = true;
 
-    // FIX: Check search (query params) first, fallback to hash
     const urlString = window.location.search || window.location.hash || '';
     const m = urlString.match(/session_id=([^&]+)/);
 
@@ -28,6 +27,11 @@ export default function AuthCallback() {
         const res = await exchangeSession(session_id);
 
         if (res.user) {
+          // FIX: Defeat 3rd-Party Cookie Blockers by explicitly saving the token
+          if (res.session_token) {
+            localStorage.setItem('session_token', res.session_token);
+          }
+
           await checkAuth();
           // Clean up the messy URL parameters so it looks professional
           window.history.replaceState(null, '', window.location.pathname);

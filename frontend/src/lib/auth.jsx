@@ -14,6 +14,8 @@ export function AuthProvider({ children }) {
       setUser(me);
     } catch {
       setUser(null);
+      // FIX: Failsafe to wipe corrupted or expired tokens
+      localStorage.removeItem('session_token');
     } finally {
       setLoading(false);
     }
