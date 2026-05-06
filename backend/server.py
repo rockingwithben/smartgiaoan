@@ -122,7 +122,7 @@ async def _create_session(user_id: str, response: Response) -> str:
     )
     return token
 
-# FIX: Ironclad Auth Header Extraction
+# FIX: Ironclad Auth Header Extraction (Defeats Safari/Chrome Cookie Blockers)
 async def get_current_user_optional(
     request: Request,
     session_token: Optional[str] = Cookie(None),
@@ -218,16 +218,24 @@ async def _run_gemini(prompt: str, level: str) -> dict:
 @api_router.post("/auth/session")
 async def auth_session_exchange(payload: SessionExchangeRequest, response: Response):
     try:
-        async with httpx.AsyncClient(timeout=10.0) as hx:
-            r = await hx.get(f"[https://auth.emergentagent.com/api/session/](https://auth.emergentagent.com/api/session/){payload.session_id}")
+        # Extended timeout to 30s and allowed follow_redirects for maximum reliability on Render cold starts
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as hx:
+            url = f"[https://auth.emergentagent.com/api/session/](https://auth.emergentagent.com/api/session/){payload.session_id}"
+            r = await hx.get(url)
             r.raise_for_status()
             eu = r.json()
+            
+    except httpx.HTTPStatusError as e:
+        logger.error(f"Emergent HTTP Error: {e.response.status_code} - {e.response.text}")
+        raise HTTPException(status_code=401, detail=f"Google Auth Rejected. Status: {e.response.status_code}. Try logging in again.")
+        
     except Exception as e:
-        raise HTTPException(status_code=401, detail="Invalid or expired Google session")
+        logger.error(f"Emergent Connection Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Server connection timeout. Render is waking up. Please refresh and try again.")
 
     email = eu.get("email", "").strip().lower()
     if not email:
-        raise HTTPException(status_code=400, detail="No email in Google session")
+        raise HTTPException(status_code=400, detail="Google response missing email address")
 
     doc = await db.users.find_one({"email": email})
     if not doc:
@@ -261,7 +269,6 @@ async def auth_me(user: User = Depends(require_user)):
 
 @api_router.post("/auth/logout")
 async def auth_logout(response: Response, request: Request):
-    # Try to extract the token to delete it from DB
     token = request.cookies.get("session_token")
     auth_header = request.headers.get("Authorization")
     if auth_header and auth_header.startswith("Bearer "):
@@ -288,18 +295,14 @@ async def delete_account(user: User = Depends(require_user)):
 # --- WORKSHEETS ---
 @api_router.post("/worksheets/generate")
 async def generate_ws(payload: WorksheetRequest, user: User = Depends(require_user)):
-    # 1. Enforce Paywall & Quotas
     total_allowed = FREE_QUOTA + user.bonus_credits
     if not user.is_premium and user.free_used >= total_allowed:
         raise HTTPException(status_code=402, detail="Out of credits. Please upgrade or watch an ad.")
 
-    # 2. Build AI Prompt
     prompt = f"Design a {payload.skill} worksheet for {payload.level} (CEFR {payload.cefr}) students. Topic: '{payload.topic}'. Length: {payload.num_questions} items. Grammar focus: {payload.grammar_focus or 'None'}."
 
-    # 3. Generate Content via Dynamic Engine
     ws_data = await _run_gemini(prompt, payload.level)
 
-    # 4. Save to Database
     ws_id = f"ws_{uuid.uuid4().hex[:12]}"
     ws_doc = {
         "worksheet_id": ws_id,
@@ -309,12 +312,11 @@ async def generate_ws(payload: WorksheetRequest, user: User = Depends(require_us
         "cefr": payload.cefr,
         "skill": payload.skill,
         "content": ws_data,
-        "is_public": True,  # Feeds the Public Library SEO
+        "is_public": True,
         "created_at": _now().isoformat()
     }
     await db.worksheets.insert_one(ws_doc)
 
-    # 5. Deduct Quota
     if not user.is_premium:
         await db.users.update_one({"user_id": user.user_id}, {"$inc": {"free_used": 1}})
 
@@ -329,14 +331,12 @@ async def list_ws(user: User = Depends(require_user)):
 # --- MONETIZATION & USAGE ---
 @api_router.post("/usage/grant-rewarded")
 async def grant_ad_reward(payload: RewardedAdRequest, user: User = Depends(require_user)):
-    # 15s Ad = 1 credit | 30s Ad = 2 credits
     bonus_amount = 1 if payload.tier <= 15 else 2
     await db.users.update_one({"user_id": user.user_id}, {"$inc": {"bonus_credits": bonus_amount}})
     return {"status": "reward_granted", "amount": bonus_amount}
 
 @api_router.post("/billing/mark-premium")
 async def mark_premium(user: User = Depends(require_user)):
-    # MVP Honor System Route (MUST secure with PayPal Webhooks post-launch)
     await db.users.update_one({"user_id": user.user_id}, {"$set": {"is_premium": True}})
     return {"status": "premium_activated"}
 
