@@ -5,44 +5,40 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  // ALWAYS start true to prevent premature kicks
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true); // Start true to prevent the "Flash and Kick"
 
   const checkAuth = useCallback(async () => {
-    setLoading(true); // CRITICAL: Lock the UI while checking
     try {
       const me = await getMe();
-      setUser(me);
-      return me;
-    } catch {
+      if (me && me.user_id) {
+        setUser(me);
+      } else {
+        setUser(null);
+      }
+    } catch (err) {
+      console.error("Auth check failed:", err);
       setUser(null);
-      localStorage.removeItem('session_token');
-      return null;
+      // Only clear token if it's a genuine 401/auth failure
+      if (err.response?.status === 401) {
+        localStorage.removeItem('session_token');
+      }
     } finally {
-      setLoading(false); // Only unlock when 100% finished
+      setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    const hasSessionId = window.location.search?.includes('session_id=') || window.location.hash?.includes('session_id=');
-    if (hasSessionId) {
-      // CRITICAL: If we are returning from Google, DO NOT set loading to false yet.
-      // Let the AuthCallback finish the job.
-      return;
+    // If we are currently in the middle of a Google Callback, 
+    // do NOT run checkAuth yet. Let AuthCallback.jsx handle the state.
+    const isCallback = window.location.pathname === '/auth/callback';
+    
+    if (!isCallback) {
+      checkAuth();
+    } else {
+      // We are in callback, stop global loading from interfering
+      setLoading(false);
     }
-    checkAuth();
   }, [checkAuth]);
-
-  const refreshUser = useCallback(async () => {
-    try {
-      const me = await getMe();
-      setUser(me);
-      return me;
-    } catch {
-      setUser(null);
-      return null;
-    }
-  }, []);
 
   const startLogin = useCallback(() => {
     const redirectUrl = window.location.origin + '/auth/callback';
@@ -50,13 +46,18 @@ export function AuthProvider({ children }) {
   }, []);
 
   const logout = useCallback(async () => {
-    await apiLogout();
+    try {
+      await apiLogout();
+    } catch (e) {
+      console.warn("Logout request failed, clearing local state anyway.");
+    }
     setUser(null);
+    localStorage.removeItem('session_token');
     window.location.href = '/';
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, setUser, loading, startLogin, logout, refreshUser, checkAuth }}>
+    <AuthContext.Provider value={{ user, setUser, loading, startLogin, logout, checkAuth }}>
       {children}
     </AuthContext.Provider>
   );
