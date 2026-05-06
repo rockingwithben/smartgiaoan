@@ -11,8 +11,13 @@ export const http = axios.create({
   withCredentials: true,
 });
 
-// FIX: Third-Party Cookie Blocker Defeat
-// Intercept every request and inject the session token manually
+// 2000% MODE FIX: On absolute boot, force the token into the headers immediately
+const initialToken = localStorage.getItem('session_token');
+if (initialToken) {
+  http.defaults.headers.common['Authorization'] = `Bearer ${initialToken}`;
+}
+
+// Failsafe Interceptor: Double check the token before every single request
 http.interceptors.request.use((config) => {
   const token = localStorage.getItem('session_token');
   if (token) {
@@ -32,8 +37,8 @@ export async function exchangeSession(session_id) {
 }
 
 export async function logout() {
-  // Clear the local token on logout
   localStorage.removeItem('session_token');
+  delete http.defaults.headers.common['Authorization'];
   try {
     await http.post('/auth/logout');
   } catch (e) {}
@@ -69,7 +74,6 @@ export async function markPremium() {
   return r.data;
 }
 
-// FIX: Perfection Polish - Render Cold Start Wake-up
 export async function wakeUpServer() {
   try {
     await axios.get(`${BASE}/health`, { timeout: 5000 });
