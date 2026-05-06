@@ -201,9 +201,9 @@ Rules:
 async def _run_gemini(prompt: str, level: str) -> dict:
     dynamic_instruction = build_system_prompt(level)
     
-    # 2000% FIX: We are using the correct, standard 1.5 flash model tied to your brand new API key
+    # UPGRADED ENGINE: Using Gemini 1.5 Pro Latest for maximum reasoning power
     model = genai.GenerativeModel(
-        model_name="gemini-1.5-flash",
+        model_name="gemini-1.5-pro-latest",
         system_instruction=dynamic_instruction,
         generation_config={"response_mime_type": "application/json", "temperature": 0.8},
     )
@@ -279,6 +279,7 @@ async def auth_session_exchange(payload: SessionExchangeRequest, response: Respo
         raise HTTPException(status_code=400, detail="Missing session ID")
 
     try:
+        # 2000% FIX: Trust_env=False neutralizes the Render "missing http://" bug entirely.
         async with httpx.AsyncClient(timeout=30.0, follow_redirects=True, trust_env=False) as hx:
             url = f"https://auth.emergentagent.com/api/session/{sid}"
             r = await hx.get(url, headers={"Accept": "application/json", "User-Agent": "SmartGiaoAn-Backend/1.0"})
