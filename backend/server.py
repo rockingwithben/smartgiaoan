@@ -456,6 +456,74 @@ async def mark_premium(user: User = Depends(require_user)):
     return {"status": "premium_activated"}
 
 # ============================================================
+# PUBLIC LIBRARY
+# ============================================================
+
+@api_router.get("/library/feed")
+async def public_library_feed(
+    level: Optional[str] = None,
+    skill: Optional[str] = None,
+    search: Optional[str] = None
+):
+    query = {"is_public": True}
+    if level and level != "All":
+        query["level"] = level
+    if skill and skill != "All":
+        query["skill"] = skill
+    if search:
+        query["$or"] = [
+            {"title": {"$regex": search, "$options": "i"}},
+            {"topic": {"$regex": search, "$options": "i"}}
+        ]
+    
+    pipeline = [
+        {"$match": query},
+        {"$sort": {"created_at": -1}},
+        {"$limit": 100},
+        {"$lookup": {
+            "from": "users",
+            "localField": "user_id",
+            "foreignField": "user_id",
+            "as": "author"
+        }},
+        {"$project": {
+            "_id": 0,
+            "worksheet_id": 1,
+            "title": 1,
+            "level": 1,
+            "cefr": 1,
+            "skill": 1,
+            "topic": 1,
+            "created_at": 1,
+            "author_name": {"$ifNull": [{"$arrayElemAt": ["$author.name", 0]}, "Anonymous Teacher"]}
+        }}
+    ]
+    docs = await db.worksheets.aggregate(pipeline).to_list(100)
+    return docs
+
+@api_router.post("/library/{worksheet_id}/clone")
+async def clone_worksheet(worksheet_id: str, user: User = Depends(require_user)):
+    original = await db.worksheets.find_one({"worksheet_id": worksheet_id, "is_public": True})
+    if not original:
+        raise HTTPException(status_code=404, detail="Worksheet not found or not public")
+    
+    new_id = f"ws_{uuid.uuid4().hex[:12]}"
+    new_doc = {
+        "worksheet_id": new_id,
+        "user_id": user.user_id,
+        "title": original["title"],
+        "level": original["level"],
+        "cefr": original["cefr"],
+        "skill": original["skill"],
+        "topic": original.get("topic", ""),
+        "content": original["content"],
+        "is_public": False,
+        "created_at": _now().isoformat(),
+        "cloned_from": worksheet_id
+    }
+    await db.worksheets.insert_one(new_doc)
+    return {"worksheet_id": new_id, "status": "cloned"}
+# ============================================================
 # MIDDLEWARE & ROUTING
 # ============================================================
 app.include_router(api_router)
