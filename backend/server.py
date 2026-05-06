@@ -65,6 +65,22 @@ app = FastAPI(title="SmartGiaoAn API", version="2.0.0", lifespan=lifespan)
 api_router = APIRouter(prefix="/api")
 
 # ============================================================
+# PASSWORD HASHING (Manual Auth Logic)
+# ============================================================
+def hash_password(password: str) -> str:
+    salt = secrets.token_hex(16)
+    h = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000).hex()
+    return f"{salt}:{h}"
+
+def verify_password(password: str, hashed: str) -> bool:
+    try:
+        salt, stored = hashed.split(':', 1)
+        h = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000).hex()
+        return secrets.compare_digest(h, stored)
+    except Exception:
+        return False
+
+# ============================================================
 # MODELS
 # ============================================================
 class User(BaseModel):
@@ -90,6 +106,13 @@ class WorksheetRequest(BaseModel):
 class SessionExchangeRequest(BaseModel):
     session_id: str
 
+class EmailAuthRequest(BaseModel):
+    email: str
+    password: str
+    name: Optional[str] = ""
+    role: Optional[str] = "Teacher"
+    heard_from: Optional[str] = ""
+
 class RewardedAdRequest(BaseModel):
     tier: int
 
@@ -114,7 +137,6 @@ async def _create_session(user_id: str, response: Response) -> str:
         "expires_at": expires.isoformat(),
         "created_at": _now().isoformat(),
     })
-    # Set the cookie as a fallback, but primary auth will use the returned token via LocalStorage
     response.set_cookie(
         key="session_token", value=token,
         httponly=True, secure=True, samesite="none",
@@ -136,7 +158,7 @@ async def get_current_user_optional(
         token = authorization.split(" ", 1)[1].strip()
         
     if not token:
-        # Fallback check directly in the request headers just in case
+        # Fallback check directly in the request headers
         auth_header = request.headers.get("Authorization")
         if auth_header and auth_header.lower().startswith("bearer "):
             token = auth_header.split(" ", 1)[1].strip()
@@ -171,15 +193,14 @@ Rules:
 - Use Vietnamese names: Minh, Lan, Huy, Thao, Nam, Linh, Duc, Mai.
 - Use Vietnamese locations: Hanoi, Hoan Kiem, West Lake, Sapa, Da Lat.
 - Include Vietnamese culture: Tet, banh mi, pho, ao dai, Mid-Autumn Festival.
-- OUTPUT MUST BE RAW, VALID JSON ONLY. Do not use markdown code blocks (```json).
+- OUTPUT MUST BE RAW, VALID JSON ONLY. Do not use markdown code blocks.
 """
-    # Dynamic Pedagogy Injection
     if "Kindergarten" in level:
-        base_prompt += "\n- KINDERGARTEN OVERRIDE: You are designing for a class of active 3-to-4-year-olds. Do NOT generate dense text. Prioritize large visual placeholders, alphabet tracing exercises, basic phonics, and TPR (Total Physical Response) game ideas. Limit text to extremely simple target vocabulary."
+        base_prompt += "\n- KINDERGARTEN OVERRIDE: Prioritize large visual placeholders, alphabet tracing, and TPR game ideas. Extremely simple vocab only."
     elif "Primary" in level:
-        base_prompt += "\n- PRIMARY OVERRIDE: Focus on vocabulary matching, simple gap-fills, short localized stories (e.g., family trips to the Old Quarter), and coloring prompts. Keep formatting highly spacious."
+        base_prompt += "\n- PRIMARY OVERRIDE: Focus on vocab matching, gap-fills, and short stories about Vietnam. Spacious formatting."
     else:
-        base_prompt += "\n- SECONDARY/IELTS OVERRIDE: Minimum 3 full A4 pages of rigorous content. Include complex reading comprehension, structured writing tasks, and a full, detailed answer key."
+        base_prompt += "\n- SECONDARY/IELTS OVERRIDE: Rigorous academic content, complex reading comprehension, and full answer keys."
 
     return base_prompt
 
@@ -191,13 +212,11 @@ async def _run_gemini(prompt: str, level: str) -> dict:
         generation_config={"response_mime_type": "application/json", "temperature": 0.8},
     )
     
-    # FIX: Robust 3-try loop to eliminate random AI hallucination crashes
     for attempt in range(3):
         try:
             result = await asyncio.to_thread(model.generate_content, prompt)
             raw_text = result.text.strip()
             
-            # Clean markdown formatting if the AI disobeys prompt instructions
             if raw_text.startswith("```json"):
                 raw_text = raw_text[7:-3].strip()
             elif raw_text.startswith("```"):
@@ -206,37 +225,60 @@ async def _run_gemini(prompt: str, level: str) -> dict:
             return json.loads(raw_text)
         except Exception as e:
             if attempt == 2:
-                logger.error(f"Gemini generation failed after 3 attempts: {e}")
-                raise HTTPException(status_code=500, detail="AI Generation failed. Please try again.")
+                logger.error(f"Gemini failed after 3 attempts: {e}")
+                raise HTTPException(status_code=500, detail="AI generation failed. Please try again.")
             await asyncio.sleep(1)
 
 # ============================================================
 # API ROUTES
 # ============================================================
 
-# --- AUTHENTICATION ---
+# --- MANUAL AUTHENTICATION ---
+@api_router.post("/auth/register")
+async def auth_register(payload: EmailAuthRequest, response: Response):
+    email = payload.email.strip().lower()
+    existing = await db.users.find_one({"email": email})
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    user_id = f"user_{uuid.uuid4().hex[:12]}"
+    doc = {
+        "user_id": user_id, "email": email,
+        "name": payload.name or email.split("@")[0],
+        "role": payload.role or "Teacher",
+        "password_hash": hash_password(payload.password),
+        "is_premium": email in ADMIN_EMAILS,
+        "free_used": 0, "bonus_credits": 0,
+        "created_at": _now().isoformat()
+    }
+    await db.users.insert_one(doc)
+    token = await _create_session(user_id, response)
+    return {"user": {k:v for k,v in doc.items() if k != "password_hash"}, "session_token": token}
+
+@api_router.post("/auth/login")
+async def auth_login(payload: EmailAuthRequest, response: Response):
+    email = payload.email.strip().lower()
+    doc = await db.users.find_one({"email": email})
+    if not doc or not doc.get("password_hash") or not verify_password(payload.password, doc["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    token = await _create_session(doc["user_id"], response)
+    return {"user": {k:v for k,v in doc.items() if k != "password_hash"}, "session_token": token}
+
+# --- GOOGLE OAUTH EXCHANGE ---
 @api_router.post("/auth/session")
 async def auth_session_exchange(payload: SessionExchangeRequest, response: Response):
     try:
-        # Extended timeout to 30s and allowed follow_redirects for maximum reliability on Render cold starts
         async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as hx:
-            url = f"[https://auth.emergentagent.com/api/session/](https://auth.emergentagent.com/api/session/){payload.session_id}"
-            r = await hx.get(url)
+            url = f"https://auth.emergentagent.com/api/session/{payload.session_id}"
+            r = await hx.get(url, headers={"Accept": "application/json"})
             r.raise_for_status()
             eu = r.json()
-            
-    except httpx.HTTPStatusError as e:
-        logger.error(f"Emergent HTTP Error: {e.response.status_code} - {e.response.text}")
-        raise HTTPException(status_code=401, detail=f"Google Auth Rejected. Status: {e.response.status_code}. Try logging in again.")
-        
     except Exception as e:
-        logger.error(f"Emergent Connection Error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Server connection timeout. Render is waking up. Please refresh and try again.")
+        logger.error(f"Auth Service Failure: {str(e)}")
+        raise HTTPException(status_code=401, detail="Google authentication expired. Please sign in again.")
 
     email = eu.get("email", "").strip().lower()
-    if not email:
-        raise HTTPException(status_code=400, detail="Google response missing email address")
-
     doc = await db.users.find_one({"email": email})
     if not doc:
         user_id = f"user_{uuid.uuid4().hex[:12]}"
@@ -251,17 +293,10 @@ async def auth_session_exchange(payload: SessionExchangeRequest, response: Respo
         }
         await db.users.insert_one(doc)
     else:
-        update = {"picture": eu.get("picture", doc.get("picture", ""))}
-        if email in ADMIN_EMAILS:
-            update["is_premium"] = True
-        await db.users.update_one({"email": email}, {"$set": update})
-        doc = await db.users.find_one({"email": email}, {"_id": 0})
+        await db.users.update_one({"email": email}, {"$set": {"picture": eu.get("picture", doc.get("picture", ""))}})
 
     token = await _create_session(doc["user_id"], response)
-    doc.pop("_id", None)
-    
-    # Returning session_token explicitly so frontend api.js can store it in LocalStorage
-    return {"user": doc, "session_token": token}
+    return {"user": {k:v for k,v in doc.items() if k != "_id"}, "session_token": token}
 
 @api_router.get("/auth/me")
 async def auth_me(user: User = Depends(require_user)):
@@ -271,26 +306,12 @@ async def auth_me(user: User = Depends(require_user)):
 async def auth_logout(response: Response, request: Request):
     token = request.cookies.get("session_token")
     auth_header = request.headers.get("Authorization")
-    if auth_header and auth_header.startswith("Bearer "):
+    if auth_header and auth_header.lower().startswith("bearer "):
         token = auth_header.split(" ")[1]
-        
     if token:
         await db.user_sessions.delete_many({"session_token": token})
-        
     response.delete_cookie("session_token")
     return {"status": "logged_out"}
-
-@api_router.get("/auth/export")
-async def export_account(user: User = Depends(require_user)):
-    worksheets = await db.worksheets.find({"user_id": user.user_id}, {"_id": 0}).to_list(None)
-    return {"user": user.model_dump(), "worksheets": worksheets}
-
-@api_router.delete("/auth/delete-account")
-async def delete_account(user: User = Depends(require_user)):
-    await db.users.delete_one({"user_id": user.user_id})
-    await db.worksheets.delete_many({"user_id": user.user_id})
-    await db.user_sessions.delete_many({"user_id": user.user_id})
-    return {"status": "deleted"}
 
 # --- WORKSHEETS ---
 @api_router.post("/worksheets/generate")
@@ -299,66 +320,45 @@ async def generate_ws(payload: WorksheetRequest, user: User = Depends(require_us
     if not user.is_premium and user.free_used >= total_allowed:
         raise HTTPException(status_code=402, detail="Out of credits. Please upgrade or watch an ad.")
 
-    prompt = f"Design a {payload.skill} worksheet for {payload.level} (CEFR {payload.cefr}) students. Topic: '{payload.topic}'. Length: {payload.num_questions} items. Grammar focus: {payload.grammar_focus or 'None'}."
-
+    prompt = f"Design a {payload.skill} worksheet for {payload.level} (CEFR {payload.cefr}) students. Topic: '{payload.topic}'."
     ws_data = await _run_gemini(prompt, payload.level)
 
     ws_id = f"ws_{uuid.uuid4().hex[:12]}"
     ws_doc = {
-        "worksheet_id": ws_id,
-        "user_id": user.user_id,
+        "worksheet_id": ws_id, "user_id": user.user_id,
         "title": f"{payload.topic} - {payload.skill}",
-        "level": payload.level,
-        "cefr": payload.cefr,
-        "skill": payload.skill,
-        "content": ws_data,
-        "is_public": True,
-        "created_at": _now().isoformat()
+        "level": payload.level, "cefr": payload.cefr, "skill": payload.skill,
+        "content": ws_data, "is_public": True, "created_at": _now().isoformat()
     }
     await db.worksheets.insert_one(ws_doc)
-
     if not user.is_premium:
         await db.users.update_one({"user_id": user.user_id}, {"$inc": {"free_used": 1}})
-
-    ws_doc.pop("_id", None)
-    return ws_doc
+    return {k:v for k,v in ws_doc.items() if k != "_id"}
 
 @api_router.get("/worksheets")
 async def list_ws(user: User = Depends(require_user)):
-    docs = await db.worksheets.find({"user_id": user.user_id}, {"_id": 0}).sort("created_at", -1).to_list(100)
-    return docs
+    return await db.worksheets.find({"user_id": user.user_id}, {"_id": 0}).sort("created_at", -1).to_list(100)
 
-# --- MONETIZATION & USAGE ---
+# --- MONETIZATION ---
 @api_router.post("/usage/grant-rewarded")
 async def grant_ad_reward(payload: RewardedAdRequest, user: User = Depends(require_user)):
-    bonus_amount = 1 if payload.tier <= 15 else 2
-    await db.users.update_one({"user_id": user.user_id}, {"$inc": {"bonus_credits": bonus_amount}})
-    return {"status": "reward_granted", "amount": bonus_amount}
+    bonus = 1 if payload.tier <= 15 else 2
+    await db.users.update_one({"user_id": user.user_id}, {"$inc": {"bonus_credits": bonus}})
+    return {"status": "reward_granted", "amount": bonus}
 
 @api_router.post("/billing/mark-premium")
 async def mark_premium(user: User = Depends(require_user)):
     await db.users.update_one({"user_id": user.user_id}, {"$set": {"is_premium": True}})
     return {"status": "premium_activated"}
 
-
 # ============================================================
-# ROUTER INCLUSION & MIDDLEWARE 
-# (Strict Ordering Required for CORS to work)
+# MIDDLEWARE & ROUTING
 # ============================================================
 app.include_router(api_router)
+app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=CORS_ORIGINS,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+@app.get("/")
+async def root(): return {"app": "SmartGiaoAn API", "status": "operational"}
 
-@app.get("/", include_in_schema=False)
-async def root():
-    return {"app": "SmartGiaoAn API", "status": "operational", "version": "2.0.0"}
-
-@app.get("/health", include_in_schema=False)
-async def health():
-    return {"status": "healthy", "db": "connected" if mongo_client else "disconnected"}
+@app.get("/health")
+async def health(): return {"status": "healthy", "db": "connected" if mongo_client else "disconnected"}
