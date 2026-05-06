@@ -12,8 +12,9 @@ export default function AuthCallback() {
     if (hasProcessed.current) return;
     hasProcessed.current = true;
 
-    const hash = window.location.hash || '';
-    const m = hash.match(/session_id=([^&]+)/);
+    // FIX: Check search (query params) first, fallback to hash
+    const urlString = window.location.search || window.location.hash || '';
+    const m = urlString.match(/session_id=([^&]+)/);
 
     if (!m) {
       navigate('/', { replace: true });
@@ -28,6 +29,7 @@ export default function AuthCallback() {
 
         if (res.user) {
           await checkAuth();
+          // Clean up the messy URL parameters so it looks professional
           window.history.replaceState(null, '', window.location.pathname);
 
           if (!res.user.teaching_level || !res.user.role) {
