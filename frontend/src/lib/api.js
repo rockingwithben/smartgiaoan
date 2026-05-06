@@ -2,7 +2,7 @@ import axios from 'axios';
 
 const BASE = process.env.REACT_APP_BACKEND_URL
   ? process.env.REACT_APP_BACKEND_URL.replace(/\/$/, '')
-  : 'https://smartgiaoan-backend.onrender.com';  // ← REMOVED TRAILING SPACE
+  : 'https://smartgiaoan-backend.onrender.com';
 
 export const API = `${BASE}/api`;
 
@@ -53,4 +53,15 @@ export async function grantRewarded(tier) {
 export async function markPremium() {
   const r = await http.post('/billing/mark-premium');
   return r.data;
+}
+
+// FIX: Perfection Polish - Render Cold Start Wake-up
+export async function wakeUpServer() {
+  try {
+    // Silently hit the health endpoint in the background to spin up the Render instance
+    await axios.get(`${BASE}/health`, { timeout: 5000 });
+    console.log("Backend server is awake and ready.");
+  } catch (e) {
+    console.warn("Backend server is waking up...");
+  }
 }
