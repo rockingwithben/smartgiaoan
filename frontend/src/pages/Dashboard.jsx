@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { generateWorksheet, listWorksheets } from '../lib/api';
 import { toast } from 'sonner';
-// FIX: Added Filter and ArrowUpDown icons for the new UX controls
 import { Loader2, Sparkles, FileText, Crown, Filter, ArrowUpDown } from 'lucide-react'; 
 import { PaywallModal } from '../components/PaywallModal';
 import RewardedAdModal from '../components/RewardedAdModal';
@@ -17,13 +16,14 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const [worksheets, setWorksheets] = useState([]);
   const [generating, setGenerating] = useState(false);
+  const [loadingText, setLoadingText] = useState('Generate Worksheet');
   const [showPaywall, setShowPaywall] = useState(false);
   const [showAd, setShowAd] = useState(false);
   const [adTier, setAdTier] = useState(15);
   
-  // FIX: Phase 1 Hardening - State for UX Optimization (Sorting & Filtering)
+  // UX Optimization (Sorting & Filtering)
   const [filterLevel, setFilterLevel] = useState('All');
-  const [sortOrder, setSortOrder] = useState('desc'); // 'desc' = newest first
+  const [sortOrder, setSortOrder] = useState('desc');
 
   const [form, setForm] = useState({
     level: 'Primary 3-4',
@@ -45,14 +45,10 @@ export default function Dashboard() {
   }, [user]);
 
   useEffect(() => {
-    // FIX: Phantom Route Bounce Patch
-    // We redirect to '/' instead of a non-existent '/login' route.
-    // Also ensuring we only bounce if auth is completely finished loading.
     if (!authLoading && !user) {
       navigate('/', { replace: true });
       return;
     }
-    
     if (user) {
       loadWorksheets();
     }
@@ -70,19 +66,44 @@ export default function Dashboard() {
       toast.error('Please enter a topic');
       return;
     }
+    
     setGenerating(true);
+    
+    // Psychological Wait-Time Reduction
+    const loadingPhrases = [
+      "Analyzing CEFR Level...",
+      "Structuring Grammar Exercises...",
+      "Writing Vietnamese Contexts...",
+      "Formatting Answer Key...",
+      "Finalizing PDF Layout..."
+    ];
+    
+    let phraseIndex = 0;
+    setLoadingText(loadingPhrases[0]);
+    
+    const interval = setInterval(() => {
+      phraseIndex++;
+      if (phraseIndex < loadingPhrases.length) {
+        setLoadingText(loadingPhrases[phraseIndex]);
+      }
+    }, 2500);
+
     try {
       const ws = await generateWorksheet(form);
-      toast.success('Worksheet generated!');
+      clearInterval(interval);
+      toast.success('Worksheet generated successfully!');
       navigate(`/worksheet/${ws.worksheet_id}`);
     } catch (err) {
+      clearInterval(interval);
       if (err.response?.status === 402) {
         setShowPaywall(true);
       } else {
         toast.error(err.response?.data?.detail || 'Generation failed');
       }
     } finally {
+      clearInterval(interval);
       setGenerating(false);
+      setLoadingText('Generate Worksheet');
     }
   };
 
@@ -96,7 +117,7 @@ export default function Dashboard() {
     window.location.reload();
   };
 
-  // FIX: Phase 1 Hardening - Derived state for sorted and filtered worksheets
+  // Process sorting and filtering
   const processedWorksheets = worksheets
     .filter(ws => filterLevel === 'All' || ws.level === filterLevel)
     .sort((a, b) => {
@@ -172,14 +193,13 @@ export default function Dashboard() {
                 </div>
                 <button type="submit" disabled={generating} className="w-full bg-black text-white py-3 rounded-xl font-semibold hover:bg-gray-800 transition disabled:opacity-50 flex items-center justify-center gap-2">
                   {generating && <Loader2 size={18} className="animate-spin" />}
-                  {generating ? 'Generating...' : 'Generate Worksheet'}
+                  {generating ? loadingText : 'Generate Worksheet'}
                 </button>
               </form>
             </div>
           </div>
 
           <div className="lg:col-span-2">
-            {/* FIX: Phase 1 Hardening - UI for Filtering and Sorting */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-4">
               <h2 className="font-bold text-gray-900 flex items-center gap-2">
                 <FileText size={18} /> My Worksheets ({processedWorksheets.length})
@@ -208,7 +228,6 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* FIX: Map over processedWorksheets instead of raw worksheets */}
             {processedWorksheets.length === 0 ? (
               <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center">
                 <p className="text-gray-400">No worksheets found for these filters. Generate your first one!</p>

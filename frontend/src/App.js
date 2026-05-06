@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { I18nProvider } from './lib/i18n';
 import { AuthProvider } from './lib/auth';
+import { wakeUpServer } from './lib/api';
+
 import Landing from './pages/Landing';
 import Dashboard from './pages/Dashboard';
 import AuthCallback from './pages/AuthCallback';
@@ -30,12 +32,10 @@ class ErrorBoundary extends React.Component {
   }
 
   static getDerivedStateFromError(error) {
-    // Update state so the next render will show the fallback UI.
     return { hasError: true };
   }
 
   componentDidCatch(error, errorInfo) {
-    // You can log the error to an error reporting service here later
     console.error("SmartGiaoAn Critical UI Crash:", error, errorInfo);
   }
 
@@ -88,6 +88,11 @@ function AppRouter() {
 }
 
 function App() {
+  // FIX: Trigger the silent wake-up ping the moment the app mounts
+  useEffect(() => {
+    wakeUpServer();
+  }, []);
+
   return (
     <ErrorBoundary>
       <I18nProvider>
