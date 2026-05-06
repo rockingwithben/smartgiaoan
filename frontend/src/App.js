@@ -22,6 +22,45 @@ import WorksheetView from './pages/WorksheetView';
 import { CookieConsent } from './components/CookieConsent';
 import './App.css';
 
+// FIX: Phase 4 Hardening - Global Error Boundary to prevent White Screens of Death
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error) {
+    // Update state so the next render will show the fallback UI.
+    return { hasError: true };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    // You can log the error to an error reporting service here later
+    console.error("SmartGiaoAn Critical UI Crash:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-4 text-center">
+          <div className="text-5xl mb-4">🚨</div>
+          <h2 className="text-2xl font-black text-gray-900 mb-2">Something went wrong.</h2>
+          <p className="text-gray-500 font-medium text-sm mb-6 max-w-md mx-auto">
+            Our servers had a minor hiccup. Don't worry, your data is safe. Please return to the homepage to continue.
+          </p>
+          <button
+            onClick={() => window.location.href = '/'}
+            className="bg-black text-white px-6 py-3 rounded-xl font-bold hover:bg-gray-800 transition"
+          >
+            Go to Homepage
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function AppRouter() {
   return (
     <>
@@ -50,13 +89,15 @@ function AppRouter() {
 
 function App() {
   return (
-    <I18nProvider>
-      <BrowserRouter>
-        <AuthProvider>
-          <AppRouter />
-        </AuthProvider>
-      </BrowserRouter>
-    </I18nProvider>
+    <ErrorBoundary>
+      <I18nProvider>
+        <BrowserRouter>
+          <AuthProvider>
+            <AppRouter />
+          </AuthProvider>
+        </BrowserRouter>
+      </I18nProvider>
+    </ErrorBoundary>
   );
 }
 
