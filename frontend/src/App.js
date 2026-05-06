@@ -24,21 +24,17 @@ import WorksheetView from './pages/WorksheetView';
 import { CookieConsent } from './components/CookieConsent';
 import './App.css';
 
-// FIX: Phase 4 Hardening - Global Error Boundary to prevent White Screens of Death
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
     this.state = { hasError: false };
   }
-
   static getDerivedStateFromError(error) {
     return { hasError: true };
   }
-
   componentDidCatch(error, errorInfo) {
     console.error("SmartGiaoAn Critical UI Crash:", error, errorInfo);
   }
-
   render() {
     if (this.state.hasError) {
       return (
@@ -66,6 +62,9 @@ function AppRouter() {
     <>
       <Routes>
         <Route path="/" element={<Landing />} />
+        {/* FIX: Restored the manual login route */}
+        <Route path="/login" element={<AuthModal />} />
+        
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/about" element={<About />} />
@@ -88,7 +87,6 @@ function AppRouter() {
 }
 
 function App() {
-  // FIX: Trigger the silent wake-up ping the moment the app mounts
   useEffect(() => {
     wakeUpServer();
   }, []);
