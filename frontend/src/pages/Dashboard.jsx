@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { generateWorksheet, listWorksheets } from '../lib/api';
 import { toast } from 'sonner';
-import { Loader2, Sparkles, FileText, Crown } from 'lucide-react';
+// FIX: Added Filter and ArrowUpDown icons for the new UX controls
+import { Loader2, Sparkles, FileText, Crown, Filter, ArrowUpDown } from 'lucide-react'; 
 import { PaywallModal } from '../components/PaywallModal';
 import RewardedAdModal from '../components/RewardedAdModal';
 
@@ -19,6 +20,11 @@ export default function Dashboard() {
   const [showPaywall, setShowPaywall] = useState(false);
   const [showAd, setShowAd] = useState(false);
   const [adTier, setAdTier] = useState(15);
+  
+  // FIX: Phase 1 Hardening - State for UX Optimization (Sorting & Filtering)
+  const [filterLevel, setFilterLevel] = useState('All');
+  const [sortOrder, setSortOrder] = useState('desc'); // 'desc' = newest first
+
   const [form, setForm] = useState({
     level: 'Primary 3-4',
     cefr: 'A2',
@@ -39,11 +45,17 @@ export default function Dashboard() {
   }, [user]);
 
   useEffect(() => {
+    // FIX: Phantom Route Bounce Patch
+    // We redirect to '/' instead of a non-existent '/login' route.
+    // Also ensuring we only bounce if auth is completely finished loading.
     if (!authLoading && !user) {
-      navigate('/login');
+      navigate('/', { replace: true });
       return;
     }
-    loadWorksheets();
+    
+    if (user) {
+      loadWorksheets();
+    }
   }, [user, authLoading, navigate, loadWorksheets]);
 
   const remaining = user
@@ -83,6 +95,15 @@ export default function Dashboard() {
   const handleAdGranted = () => {
     window.location.reload();
   };
+
+  // FIX: Phase 1 Hardening - Derived state for sorted and filtered worksheets
+  const processedWorksheets = worksheets
+    .filter(ws => filterLevel === 'All' || ws.level === filterLevel)
+    .sort((a, b) => {
+      const dateA = new Date(a.created_at).getTime();
+      const dateB = new Date(b.created_at).getTime();
+      return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
+    });
 
   if (authLoading) {
     return (
@@ -158,16 +179,43 @@ export default function Dashboard() {
           </div>
 
           <div className="lg:col-span-2">
-            <h2 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-              <FileText size={18} /> My Worksheets ({worksheets.length})
-            </h2>
-            {worksheets.length === 0 ? (
+            {/* FIX: Phase 1 Hardening - UI for Filtering and Sorting */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-4">
+              <h2 className="font-bold text-gray-900 flex items-center gap-2">
+                <FileText size={18} /> My Worksheets ({processedWorksheets.length})
+              </h2>
+
+              <div className="flex items-center gap-2">
+                <div className="relative flex items-center border border-gray-200 rounded-lg bg-white px-2 py-1.5 shadow-sm">
+                  <Filter size={14} className="text-gray-400 mr-2" />
+                  <select
+                    value={filterLevel}
+                    onChange={(e) => setFilterLevel(e.target.value)}
+                    className="bg-transparent text-sm text-gray-700 outline-none cursor-pointer"
+                  >
+                    <option value="All">All Levels</option>
+                    {LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
+                  </select>
+                </div>
+                <button
+                  onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
+                  className="flex items-center gap-2 border border-gray-200 rounded-lg bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 transition shadow-sm"
+                  title="Sort by Date"
+                >
+                  <ArrowUpDown size={14} className="text-gray-400" />
+                  {sortOrder === 'desc' ? 'Newest' : 'Oldest'}
+                </button>
+              </div>
+            </div>
+
+            {/* FIX: Map over processedWorksheets instead of raw worksheets */}
+            {processedWorksheets.length === 0 ? (
               <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center">
-                <p className="text-gray-400">No worksheets yet. Generate your first one!</p>
+                <p className="text-gray-400">No worksheets found for these filters. Generate your first one!</p>
               </div>
             ) : (
               <div className="space-y-3">
-                {worksheets.map(ws => (
+                {processedWorksheets.map(ws => (
                   <button key={ws.worksheet_id} onClick={() => navigate(`/worksheet/${ws.worksheet_id}`)} className="w-full bg-white rounded-xl border border-gray-200 p-4 text-left hover:border-indigo-500 hover:shadow-sm transition">
                     <div className="flex items-center justify-between">
                       <div>
