@@ -19,19 +19,30 @@
    ========================================================================== */
 
 @media print {
-  /* 1. Force absolute A4 dimensions and professional margins */
+  /* ── 1. Page Geometry ── */
   @page {
     size: A4 portrait;
     margin: 20mm 15mm 20mm 15mm;
   }
 
-  /* 2. Strip away the web UI (Navbars, Buttons, Footers, Modals, Toasters) */
-  nav, footer, .no-print, button, iframe, [role="dialog"], #sonner-toaster {
+  /* ── 2. Kill the Web UI ── */
+  nav,
+  footer,
+  .no-print,
+  button,
+  iframe,
+  [role="dialog"],
+  #sonner-toaster,
+  .sticky,
+  .print\:hidden {
     display: none !important;
   }
 
-  /* 3. Reset background colors to save teacher's printer ink */
-  body, main, .worksheet-container, #root {
+  /* ── 3. Ink-Saving Reset ── */
+  body,
+  main,
+  .worksheet-container,
+  #root {
     background-color: white !important;
     background-image: none !important;
     color: black !important;
@@ -39,30 +50,86 @@
     padding: 0 !important;
   }
 
-  /* 4. The Cambridge Page Break Protocol */
-  /* Prevent questions or titles from being sliced in half across pages */
+  /* Force exact color rendering (logos, badges, etc.) */
+  body {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* ── 4. The Cambridge Page Break Protocol ── */
   h1, h2, h3, h4 {
     page-break-after: avoid;
     break-after: avoid;
     margin-top: 15px !important;
   }
 
-  /* Ensure grammar blocks, images, or tables stay in one solid piece */
-  .prevent-break, .exercise-block, table, img, svg {
+  .prevent-break,
+  .exercise-block,
+  table,
+  img,
+  svg,
+  .print\:break-inside-avoid {
     page-break-inside: avoid;
     break-inside: avoid;
   }
 
-  /* Force a clean page break before the Answer Key */
-  .answer-key-section {
+  .answer-key-section,
+  .print\:break-before-page {
     page-break-before: always;
     break-before: page;
   }
 
-  /* 5. Typography Polish for Print */
+  /* ── 5. Typography Polish ── */
   p, li, td {
     font-size: 12pt !important;
     line-height: 1.6 !important;
-    color: #000 !important; /* Ensure high contrast for cheap school printers */
+    color: #000 !important;
+  }
+
+  /* ── 6. Utility Classes for WorksheetView.jsx ── */
+  /* Expand hidden sections when printing */
+  .print\:block {
+    display: block !important;
+  }
+
+  /* Strip shadows to prevent muddy grey blobs on laser printers */
+  .shadow-lg,
+  .shadow-sm,
+  .shadow-md,
+  .shadow-xl,
+  .shadow-2xl,
+  .shadow {
+    box-shadow: none !important;
+  }
+
+  /* Force white backgrounds on colored cards (saves ink, keeps contrast) */
+  .bg-gray-50,
+  .bg-gray-100,
+  .bg-gray-200,
+  .bg-red-50,
+  .bg-blue-50,
+  .bg-yellow-50,
+  .bg-green-50,
+  .bg-purple-50 {
+    background-color: white !important;
+  }
+
+  /* Ensure borders remain visible for structure */
+  .border,
+  .border-2,
+  .border-4,
+  .border-gray-200,
+  .border-gray-300,
+  .border-gray-400,
+  .border-red-200,
+  .border-blue-200,
+  .border-yellow-200 {
+    border-color: #ccc !important;
+  }
+
+  /* Black borders for print clarity */
+  .border-black,
+  .print\:border-black {
+    border-color: #000 !important;
   }
 }
