@@ -81,4 +81,12 @@ export async function wakeUpServer() {
   } catch (e) {
     console.warn("Backend server is waking up...");
   }
+// Add an interceptor to inject the token into every single request automatically
+http.interceptors.request.use((config) => {
+  const token = localStorage.getItem('session_token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
 }
