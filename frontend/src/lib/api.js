@@ -11,6 +11,16 @@ export const http = axios.create({
   withCredentials: true,
 });
 
+// FIX: Third-Party Cookie Blocker Defeat
+// Intercept every request and inject the session token manually
+http.interceptors.request.use((config) => {
+  const token = localStorage.getItem('session_token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 export async function getMe() {
   const r = await http.get('/auth/me');
   return r.data;
@@ -22,7 +32,11 @@ export async function exchangeSession(session_id) {
 }
 
 export async function logout() {
-  await http.post('/auth/logout');
+  // Clear the local token on logout
+  localStorage.removeItem('session_token');
+  try {
+    await http.post('/auth/logout');
+  } catch (e) {}
 }
 
 export async function exportAccount() {
@@ -58,7 +72,6 @@ export async function markPremium() {
 // FIX: Perfection Polish - Render Cold Start Wake-up
 export async function wakeUpServer() {
   try {
-    // Silently hit the health endpoint in the background to spin up the Render instance
     await axios.get(`${BASE}/health`, { timeout: 5000 });
     console.log("Backend server is awake and ready.");
   } catch (e) {
