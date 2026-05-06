@@ -1,22 +1,5 @@
-/* App-level helpers */
-.App { min-height: 100vh; }
-
-/* Form input shared style */
-.form-input {
-  width: 100%;
-  background: #ffffff;
-  border: 1px solid hsl(var(--border));
-  border-radius: 0.25rem;
-  padding: 0.55rem 0.75rem;
-  font-size: 0.9rem;
-  color: #1A1A1A;
-  outline: none;
-  transition: border-color .15s ease, box-shadow .15s ease;
-}
-.form-input:focus {
-  border-color: #C63A2F;
-  box-shadow: 0 0 0 2px rgba(198, 58, 47, 0.15);
-}
-.form-input::placeholder {
-  color: #999;
-}
+/* SmartGiaoAn CSS Architecture:
+  All Tailwind directives and Print-Perfect media queries have been 
+  consolidated into index.css for maximum performance and zero conflicts.
+  Do not add global styles here.
+*/

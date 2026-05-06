@@ -2,92 +2,67 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Base HTML setup for smooth scrolling and anti-aliased text */
 @layer base {
-  :root {
-    --background: 50 8% 97%;            /* #F9F9F8 */
-    --foreground: 0 0% 10%;              /* #1A1A1A */
-    --card: 0 0% 100%;
-    --card-foreground: 0 0% 10%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 10%;
-    --primary: 4 62% 48%;                /* #C63A2F */
-    --primary-foreground: 0 0% 100%;
-    --secondary: 60 6% 95%;              /* #F2F2F0 */
-    --secondary-foreground: 0 0% 10%;
-    --muted: 60 6% 95%;
-    --muted-foreground: 0 0% 35%;
-    --accent: 60 6% 95%;
-    --accent-foreground: 0 0% 10%;
-    --destructive: 0 70% 45%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 60 4% 90%;                 /* #E5E5E4 */
-    --input: 60 4% 90%;
-    --ring: 4 62% 48%;
-    --radius: 0.25rem;
-  }
-}
-
-@layer base {
-  * { @apply border-border; }
-  html, body {
-    @apply bg-background text-foreground;
-    font-family: 'Manrope', system-ui, sans-serif;
+  html {
+    scroll-behavior: smooth;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
-  ::selection {
-    background: #C63A2F;
-    color: white;
+  body {
+    @apply bg-gray-50 text-gray-900;
   }
 }
 
-@layer components {
-  .font-display {
-    font-family: 'Cormorant Garamond', Georgia, serif;
-    font-feature-settings: "liga", "kern";
-  }
-  .overline {
-    font-size: 0.7rem;
-    letter-spacing: 0.22em;
-    text-transform: uppercase;
-    font-weight: 700;
-  }
-  .ink-line {
-    background-image: linear-gradient(to right, transparent, transparent 6px, #1A1A1A 6px, #1A1A1A 12px);
-    background-size: 12px 1px;
-    background-repeat: repeat-x;
-    background-position: bottom;
-  }
-  .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 bg-terracotta text-white hover:bg-terracotta-hover px-6 py-3 rounded-sm font-medium transition-all duration-200 hover:-translate-y-[1px];
-  }
-  .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 bg-transparent border border-border text-ink hover:bg-secondary px-6 py-3 rounded-sm font-medium transition-all duration-200 hover:-translate-y-[1px];
-  }
-  .ad-slot {
-    @apply relative bg-sand border border-dashed border-[#CCCCCC] flex items-center justify-center text-center;
-  }
-  .ad-slot-label {
-    @apply absolute top-2 left-2 text-[10px] tracking-[0.2em] text-[#999999] uppercase font-bold;
-  }
-}
-
-/* Worksheet Print styling */
-.worksheet-paper {
-  font-family: 'Cormorant Garamond', Georgia, serif;
-  background: #ffffff;
-  color: #1A1A1A;
-}
-.worksheet-paper h1, .worksheet-paper h2, .worksheet-paper h3 { font-family: 'Cormorant Garamond', serif; }
-.worksheet-paper .write-line {
-  border-bottom: 1px dotted #777;
-  height: 1.6em;
-  width: 100%;
-  margin: 0.4em 0;
-}
+/* ==========================================================================
+   2000% SUPER CODE MODE: THE PRINT-PERFECT CAMBRIDGE ENGINE
+   ========================================================================== */
 
 @media print {
-  body * { visibility: hidden; }
-  .worksheet-paper, .worksheet-paper * { visibility: visible; }
-  .worksheet-paper { position: absolute; left: 0; top: 0; width: 100%; box-shadow: none !important; border: none !important; }
+  /* 1. Force absolute A4 dimensions and professional margins */
+  @page {
+    size: A4 portrait;
+    margin: 20mm 15mm 20mm 15mm;
+  }
+
+  /* 2. Strip away the web UI (Navbars, Buttons, Footers, Modals, Toasters) */
+  nav, footer, .no-print, button, iframe, [role="dialog"], #sonner-toaster {
+    display: none !important;
+  }
+
+  /* 3. Reset background colors to save teacher's printer ink */
+  body, main, .worksheet-container, #root {
+    background-color: white !important;
+    background-image: none !important;
+    color: black !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* 4. The Cambridge Page Break Protocol */
+  /* Prevent questions or titles from being sliced in half across pages */
+  h1, h2, h3, h4 {
+    page-break-after: avoid;
+    break-after: avoid;
+    margin-top: 15px !important;
+  }
+
+  /* Ensure grammar blocks, images, or tables stay in one solid piece */
+  .prevent-break, .exercise-block, table, img, svg {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* Force a clean page break before the Answer Key */
+  .answer-key-section {
+    page-break-before: always;
+    break-before: page;
+  }
+
+  /* 5. Typography Polish for Print */
+  p, li, td {
+    font-size: 12pt !important;
+    line-height: 1.6 !important;
+    color: #000 !important; /* Ensure high contrast for cheap school printers */
+  }
 }
