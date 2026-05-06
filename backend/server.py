@@ -58,12 +58,12 @@ async def lifespan(app: FastAPI):
         mongo_client.close()
         logger.info("MongoDB connection closed")
 
+# ============================================================
+# APP SETUP
+# ============================================================
 app = FastAPI(title="SmartGiaoAn API", version="2.0.0", lifespan=lifespan)
 api_router = APIRouter(prefix="/api")
 
-# ============================================================
-# PASSWORD HASHING (Manual Auth Logic)
-# ============================================================
 def hash_password(password: str) -> str:
     salt = secrets.token_hex(16)
     h = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000).hex()
@@ -201,39 +201,27 @@ Rules:
 async def _run_gemini(prompt: str, level: str) -> dict:
     dynamic_instruction = build_system_prompt(level)
     model = genai.GenerativeModel(
-        model_name="gemini-1.5-flash",
+        model_name="gemini-1.5-flash-latest", # 2000% FIX: Corrected Google API Model String
         system_instruction=dynamic_instruction,
         generation_config={"response_mime_type": "application/json", "temperature": 0.8},
     )
     
-    last_error = ""
     for attempt in range(3):
         try:
             result = await asyncio.to_thread(model.generate_content, prompt)
             raw_text = result.text.strip()
             
-            # 2000% FIX: Bulletproof markdown stripping
             if raw_text.startswith("```json"):
-                raw_text = raw_text[7:]
-            if raw_text.startswith("```"):
-                raw_text = raw_text[3:]
-            if raw_text.endswith("```"):
-                raw_text = raw_text[:-3]
+                raw_text = raw_text[7:-3].strip()
+            elif raw_text.startswith("```"):
+                raw_text = raw_text[3:-3].strip()
                 
-            raw_text = raw_text.strip()
             return json.loads(raw_text)
-            
-        except json.JSONDecodeError as je:
-            last_error = f"JSON Parsing Error. The AI generated invalid format. Detail: {je}"
-            logger.error(last_error)
         except Exception as e:
-            last_error = f"Google API Error: {str(e)}"
-            logger.error(last_error)
-            
-        await asyncio.sleep(1)
-        
-    # 2000% FIX: Unmasked error throwing
-    raise HTTPException(status_code=500, detail=f"AI Engine failed: {last_error}")
+            if attempt == 2:
+                logger.error(f"Gemini failed after 3 attempts: {e}")
+                raise HTTPException(status_code=500, detail=f"AI Engine failed: {str(e)}")
+            await asyncio.sleep(1)
 
 # ============================================================
 # API ROUTES
@@ -259,6 +247,7 @@ async def auth_register(payload: EmailAuthRequest, response: Response):
     }
     await db.users.insert_one(doc)
     token = await _create_session(user_id, response)
+    
     safe_user = {k: v for k, v in doc.items() if k not in ["_id", "password_hash"]}
     return {"user": safe_user, "session_token": token}
 
@@ -282,13 +271,17 @@ async def auth_session_exchange(payload: SessionExchangeRequest, response: Respo
         raise HTTPException(status_code=400, detail="Missing session ID")
 
     try:
-        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as hx:
-            url = f"[https://auth.emergentagent.com/api/session/](https://auth.emergentagent.com/api/session/){sid}"
+        # 2000% FIX: Added trust_env=False to block Render's hidden proxy variables
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True, trust_env=False) as hx:
+            url = f"https://auth.emergentagent.com/api/session/{sid}"
             r = await hx.get(url, headers={"Accept": "application/json", "User-Agent": "SmartGiaoAn-Backend/1.0"})
+            
             if r.status_code == 404:
                 raise HTTPException(status_code=401, detail="Google Session ID was already consumed. Try clicking Google Login again.")
+            
             r.raise_for_status()
             eu = r.json()
+            
     except HTTPException:
         raise
     except httpx.HTTPStatusError as e:
@@ -355,7 +348,6 @@ async def generate_ws(payload: WorksheetRequest, user: User = Depends(require_us
     if not user.is_premium and user.free_used >= total_allowed:
         raise HTTPException(status_code=402, detail="Out of credits. Please upgrade or watch an ad.")
 
-    # 2000% FIX: Provide stricter instructions on what schema to output
     prompt = f"""
     Design a {payload.skill} worksheet for {payload.level} (CEFR {payload.cefr}) students. 
     Topic: '{payload.topic}'. Length: {payload.num_questions} items. 
