@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Cookie, Depends
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -28,14 +29,15 @@ db_name = os.environ.get('DB_NAME', 'smartgiaoan')
 logger.info(f"MONGO_URL present: {bool(mongo_url)}")
 logger.info(f"DB_NAME: {db_name}")
 
+mongo_client = None
+db = None
+
 try:
     mongo_client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=5000)
     db = mongo_client[db_name]
     logger.info("MongoDB client created successfully")
 except Exception as e:
     logger.error(f"MongoDB connection failed: {e}")
-    mongo_client = None
-    db = None
 
 # ========== GEMINI ==========
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
@@ -62,9 +64,19 @@ CORS_ORIGINS = [o.strip() for o in _cors_env.split(',') if o.strip()] or [
 logger.info(f"CORS_ORIGINS: {CORS_ORIGINS}")
 
 # ============================================================
+# LIFESPAN (replaces deprecated @app.on_event)
+# ============================================================
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    if mongo_client:
+        mongo_client.close()
+        logger.info("MongoDB connection closed")
+
+# ============================================================
 # APP - CORS middleware MUST be registered before include_router
 # ============================================================
-app = FastAPI(title="SmartGiaoAn API", version="2.0.0")
+app = FastAPI(title="SmartGiaoAn API", version="2.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -123,6 +135,9 @@ class EmailAuthRequest(BaseModel):
     role: Optional[str] = "Teacher"
     heard_from: Optional[str] = ""
 
+class SessionExchangeRequest(BaseModel):
+    session_id: str
+
 class ProfileUpdateRequest(BaseModel):
     teaching_level: str
     class_size: str
@@ -149,7 +164,6 @@ async def _create_session(user_id: str, response: Response) -> str:
     token = str(uuid.uuid4())
     expires = _now() + timedelta(days=7)
     await db.user_sessions.insert_one({
-        "session_id": str(uuid.uuid4()),
         "user_id": user_id,
         "session_token": token,
         "expires_at": expires.isoformat(),
@@ -158,7 +172,7 @@ async def _create_session(user_id: str, response: Response) -> str:
     response.set_cookie(
         key="session_token", value=token,
         httponly=True, secure=True, samesite="none",
-        max_age=7*24*3600, path="/"
+        max_age=7 * 24 * 3600, path="/"
     )
     return token
 
@@ -278,11 +292,9 @@ async def auth_login(payload: EmailAuthRequest, response: Response):
     return {"user": doc, "session_token": token}
 
 @api_router.post("/auth/session")
-async def auth_session_exchange(payload: dict, response: Response):
+async def auth_session_exchange(payload: SessionExchangeRequest, response: Response):
     """Exchange Emergent Google OAuth session_id for a SmartGiaoAn session."""
-    session_id = payload.get("session_id")
-    if not session_id:
-        raise HTTPException(status_code=400, detail="session_id required")
+    session_id = payload.session_id
     try:
         async with httpx.AsyncClient(timeout=10.0) as hx:
             r = await hx.get(f"https://auth.emergentagent.com/api/session/{session_id}")
@@ -519,8 +531,3 @@ async def health():
         "admin_emails": list(ADMIN_EMAILS),
         "cors_origins": CORS_ORIGINS,
     }
-
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    if mongo_client:
-        mongo_client.close()
