@@ -175,9 +175,23 @@ async def require_user(user: Optional[User] = Depends(get_current_user_optional)
 # ============================================================
 # GEMINI & DYNAMIC PEDAGOGY ENGINE
 # ============================================================
-GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
+# Check for Enterprise ADC JSON first
+adc_json = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS_JSON', '').strip()
+api_key = os.environ.get('GEMINI_API_KEY', '').strip()
+
+if adc_json:
+    # Write the JSON to a hidden secure file on the Render server
+    adc_path = '/tmp/gcp_adc.json'
+    with open(adc_path, 'w') as f:
+        f.write(adc_json)
+    # Tell Google's libraries to use this file for authentication
+    os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = adc_path
+    logger.info("Using Enterprise ADC credentials for Google API.")
+elif api_key:
+    genai.configure(api_key=api_key)
+    logger.info("Using standard API key.")
+else:
+    logger.warning("NO GOOGLE CREDENTIALS FOUND! AI Engine will fail.")
 
 def build_system_prompt(level: str) -> str:
     base_prompt = """You are a senior Cambridge ESOL examiner and ESL curriculum designer specialising in Vietnamese learners.
@@ -201,7 +215,6 @@ Rules:
 async def _run_gemini(prompt: str, level: str) -> dict:
     dynamic_instruction = build_system_prompt(level)
     
-    # UPGRADED ENGINE: Using Gemini 1.5 Pro Latest for maximum reasoning power
     model = genai.GenerativeModel(
         model_name="gemini-1.5-pro-latest",
         system_instruction=dynamic_instruction,
@@ -279,7 +292,7 @@ async def auth_session_exchange(payload: SessionExchangeRequest, response: Respo
         raise HTTPException(status_code=400, detail="Missing session ID")
 
     try:
-        # 2000% FIX: Trust_env=False neutralizes the Render "missing http://" bug entirely.
+        # Trust_env=False neutralizes the Render "missing http://" bug entirely.
         async with httpx.AsyncClient(timeout=30.0, follow_redirects=True, trust_env=False) as hx:
             url = f"https://auth.emergentagent.com/api/session/{sid}"
             r = await hx.get(url, headers={"Accept": "application/json", "User-Agent": "SmartGiaoAn-Backend/1.0"})
