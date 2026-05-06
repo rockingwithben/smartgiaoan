@@ -2,7 +2,7 @@ import axios from 'axios';
 
 const BASE = process.env.REACT_APP_BACKEND_URL
   ? process.env.REACT_APP_BACKEND_URL.replace(/\/$/, '')
-  : 'https://smartgiaoan-backend.onrender.com';
+  : 'https://smartgiaoan-backend.onrender.com';  // ← REMOVED TRAILING SPACE
 
 export const API = `${BASE}/api`;
 

@@ -40,7 +40,7 @@ export function AuthProvider({ children }) {
 
   const startLogin = useCallback(() => {
     const redirectUrl = window.location.origin + '/auth/callback';
-    window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
+    window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;  // ← REMOVED SPACE
   }, []);
 
   const logout = useCallback(async () => {
