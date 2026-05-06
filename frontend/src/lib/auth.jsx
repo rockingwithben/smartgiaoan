@@ -1,4 +1,3 @@
-// REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { getMe, logout as apiLogout } from './api';
 
@@ -6,26 +5,29 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
+  // ALWAYS start true to prevent premature kicks
   const [loading, setLoading] = useState(true);
 
   const checkAuth = useCallback(async () => {
+    setLoading(true); // CRITICAL: Lock the UI while checking
     try {
       const me = await getMe();
       setUser(me);
+      return me;
     } catch {
       setUser(null);
-      // FIX: Failsafe to wipe corrupted or expired tokens
       localStorage.removeItem('session_token');
+      return null;
     } finally {
-      setLoading(false);
+      setLoading(false); // Only unlock when 100% finished
     }
   }, []);
 
   useEffect(() => {
-    // FIX: Check both search and hash to prevent the race condition
     const hasSessionId = window.location.search?.includes('session_id=') || window.location.hash?.includes('session_id=');
     if (hasSessionId) {
-      setLoading(false);
+      // CRITICAL: If we are returning from Google, DO NOT set loading to false yet.
+      // Let the AuthCallback finish the job.
       return;
     }
     checkAuth();

@@ -27,20 +27,25 @@ export default function AuthCallback() {
         const res = await exchangeSession(session_id);
 
         if (res.user) {
-          // FIX: Defeat 3rd-Party Cookie Blockers by explicitly saving the token
+          // 1. Save the token securely
           if (res.session_token) {
             localStorage.setItem('session_token', res.session_token);
           }
 
+          // 2. Await the absolute completion of the auth check
           await checkAuth();
-          // Clean up the messy URL parameters so it looks professional
+          
+          // 3. Clean the URL
           window.history.replaceState(null, '', window.location.pathname);
 
-          if (!res.user.teaching_level || !res.user.role) {
-            navigate('/profile', { replace: true });
-          } else {
-            navigate('/dashboard', { replace: true });
-          }
+          // 4. CRITICAL: Micro-delay to ensure React Context is fully updated before mounting Dashboard
+          setTimeout(() => {
+            if (!res.user.teaching_level || !res.user.role) {
+              navigate('/profile', { replace: true });
+            } else {
+              navigate('/dashboard', { replace: true });
+            }
+          }, 50);
         }
       } catch (e) {
         console.error('Auth callback failed:', e);
@@ -50,11 +55,10 @@ export default function AuthCallback() {
   }, [navigate, checkAuth]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="text-center">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Authenticating...</h2>
-        <p className="text-gray-500">Securing your session.</p>
-      </div>
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
+      <div className="w-12 h-12 border-4 border-black border-t-transparent rounded-full animate-spin mb-4"></div>
+      <h2 className="text-2xl font-black text-gray-900 mb-2">Securing Connection...</h2>
+      <p className="text-gray-500 font-medium">Please wait while we log you in.</p>
     </div>
   );
 }
