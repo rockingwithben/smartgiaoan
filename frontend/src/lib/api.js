@@ -11,13 +11,13 @@ export const http = axios.create({
   withCredentials: true,
 });
 
-// 2000% MODE FIX: On absolute boot, force the token into the headers immediately
+// WELD THE TOKEN ON BOOT
 const initialToken = localStorage.getItem('session_token');
 if (initialToken) {
   http.defaults.headers.common['Authorization'] = `Bearer ${initialToken}`;
 }
 
-// Failsafe Interceptor: Double check the token before every single request
+// WELD THE TOKEN ON EVERY REQUEST
 http.interceptors.request.use((config) => {
   const token = localStorage.getItem('session_token');
   if (token) {
@@ -25,6 +25,18 @@ http.interceptors.request.use((config) => {
   }
   return config;
 });
+
+// --- MANUAL AUTH EXPORTS (This is what Vercel was missing) ---
+export async function loginWithEmail(email, password) {
+  const r = await http.post('/auth/login', { email, password });
+  return r.data;
+}
+
+export async function registerWithEmail(email, password, name, role) {
+  const r = await http.post('/auth/register', { email, password, name, role });
+  return r.data;
+}
+// -------------------------------------------------------------
 
 export async function getMe() {
   const r = await http.get('/auth/me');
@@ -81,12 +93,4 @@ export async function wakeUpServer() {
   } catch (e) {
     console.warn("Backend server is waking up...");
   }
-// Add an interceptor to inject the token into every single request automatically
-http.interceptors.request.use((config) => {
-  const token = localStorage.getItem('session_token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
 }
