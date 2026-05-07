@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, Any, Dict, List
 from datetime import datetime, timezone, timedelta
 import google.generativeai as genai
+from google.api_core.exceptions import NotFound, InvalidArgument
 
 # ============================================================
 # INITIALIZATION & CONFIG
@@ -44,11 +45,33 @@ CORS_ORIGINS = [o.strip() for o in _cors_env.split(',') if o.strip()] or [
 ]
 
 # ============================================================
-# TIER CONFIGURATION — 2026 MODEL LINEUP (ALL RETIRED MODELS REMOVED)
+# TIER CONFIGURATION
+# ── STABLE model aliases — no date suffix, never expire ──────
+#
+#   gemini-2.5-flash-lite  →  cheapest/fastest  (Free)
+#   gemini-2.5-flash       →  balanced          (Basic)
+#   gemini-2.5-pro         →  highest quality   (Premium)
+#
+# ── Why the old names broke ──────────────────────────────────
+#   "gemini-2.5-*-preview-06-17" never existed on Google's API.
+#   Preview date-suffixes are controlled by Google (e.g. -06-05).
+#   Stable aliases are guaranteed not to 404.
 # ============================================================
+GEMINI_MODEL_FREE    = "gemini-2.5-flash-lite"
+GEMINI_MODEL_BASIC   = "gemini-2.5-flash"
+GEMINI_MODEL_PREMIUM = "gemini-2.5-pro"
+
+# Fallback chain: if primary 404s, each model is tried in order.
+# This means a future Google deprecation can never fully kill the app.
+_GEMINI_FALLBACKS = {
+    GEMINI_MODEL_FREE:    ["gemini-2.5-flash",   "gemini-2.0-flash"],
+    GEMINI_MODEL_BASIC:   ["gemini-2.5-pro",     "gemini-2.0-flash"],
+    GEMINI_MODEL_PREMIUM: ["gemini-2.5-flash",   "gemini-2.0-flash"],
+}
+
 TIER_CONFIG = {
     "free": {
-        "model": "gemini-2.5-flash-lite-preview-06-17",  # Cheapest, fastest
+        "model": GEMINI_MODEL_FREE,
         "monthly_quota": 999999,
         "ai_edits_per_month": 0,
         "has_word_editor": True,
@@ -57,7 +80,7 @@ TIER_CONFIG = {
         "ad_frequency_base": 0.3,
     },
     "basic": {
-        "model": "gemini-2.5-flash-preview-06-17",  # Fast, good quality
+        "model": GEMINI_MODEL_BASIC,
         "monthly_quota": 50,
         "ai_edits_per_month": 0,
         "has_word_editor": True,
@@ -65,7 +88,7 @@ TIER_CONFIG = {
         "has_ads": False,
     },
     "premium": {
-        "model": "gemini-2.5-pro-preview-06-17",  # Best reasoning
+        "model": GEMINI_MODEL_PREMIUM,
         "monthly_quota": 999999,
         "ai_edits_per_month": 50,
         "has_word_editor": True,
@@ -99,7 +122,7 @@ async def lifespan(app: FastAPI):
 # ============================================================
 # APP SETUP
 # ============================================================
-app = FastAPI(title="SmartGiaoAn API", version="3.2.1", lifespan=lifespan)
+app = FastAPI(title="SmartGiaoAn API", version="3.2.2", lifespan=lifespan)
 api_router = APIRouter(prefix="/api")
 
 def hash_password(password: str) -> str:
@@ -313,7 +336,9 @@ async def verify_paypal_subscription(subscription_id: str) -> dict:
         return r.json()
 
 # ============================================================
-# GEMINI ENGINE — SINGLE CONFIG, CORRECT MODEL NAMES
+# GEMINI ENGINE
+# ── Single genai.configure() call ────────────────────────────
+# ── _run_gemini() retries with fallback models on 404 ────────
 # ============================================================
 adc_json_raw = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS_JSON', '').strip()
 api_key = os.environ.get('GEMINI_API_KEY', '').strip()
@@ -326,7 +351,6 @@ if adc_json_raw:
             json.dump(creds_dict, f)
         os.chmod(adc_path, 0o600)
         os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = adc_path
-        
         import google.auth
         credentials, project_id = google.auth.default()
         genai.configure(credentials=credentials)
@@ -340,7 +364,7 @@ elif api_key:
     genai.configure(api_key=api_key)
     logger.info("AI Engine: Using API key.")
 else:
-    logger.warning("CRITICAL: NO GOOGLE CREDENTIALS! AI will fail.")
+    logger.warning("CRITICAL: NO GOOGLE CREDENTIALS CONFIGURED — AI will fail.")
 
 def build_system_prompt(level: str) -> str:
     base_prompt = """You are a senior Cambridge ESOL examiner and ESL curriculum designer specialising in Vietnamese learners.
@@ -361,53 +385,98 @@ Rules:
     return base_prompt
 
 async def _run_gemini(prompt: str, level: str, model_name: str) -> dict:
+    """
+    Run a Gemini generation with:
+      1. Up to 3 retries for transient errors (timeout, empty response, bad JSON).
+      2. Automatic fallback to next model in chain on 404 / model-not-found.
+
+    The fallback chain means a Google deprecation can never fully kill the app.
+    """
     dynamic_instruction = build_system_prompt(level)
-    
-    model = genai.GenerativeModel(
-        model_name=model_name,
-        system_instruction=dynamic_instruction,
-        generation_config={"response_mime_type": "application/json", "temperature": 0.8},
-    )
-    
-    last_error = ""
-    for attempt in range(3):
+
+    # Build the full model chain: primary first, then fallbacks
+    model_chain = [model_name] + _GEMINI_FALLBACKS.get(model_name, ["gemini-2.5-flash", "gemini-2.0-flash"])
+    # Deduplicate while preserving order
+    seen = set()
+    model_chain = [m for m in model_chain if not (m in seen or seen.add(m))]
+
+    for current_model in model_chain:
+        logger.info(f"[Gemini] Attempting model: {current_model}")
+
         try:
-            result = await asyncio.wait_for(
-                asyncio.to_thread(model.generate_content, prompt),
-                timeout=60.0
+            model = genai.GenerativeModel(
+                model_name=current_model,
+                system_instruction=dynamic_instruction,
+                generation_config={"response_mime_type": "application/json", "temperature": 0.8},
             )
-            if not result.candidates:
-                feedback = result.prompt_feedback if hasattr(result, 'prompt_feedback') else None
-                block_reason = feedback.block_reason if feedback and hasattr(feedback, 'block_reason') else "Unknown"
-                last_error = f"Content blocked. Reason: {block_reason}"
-                logger.warning(last_error)
-                await asyncio.sleep(1)
-                continue
-            
-            raw_text = result.text.strip()
-            if not raw_text:
-                last_error = "Empty response from AI"
-                logger.warning(last_error)
-                await asyncio.sleep(1)
-                continue
-            
-            raw_text = re.sub(r'^```(?:json)?\s*', '', raw_text, flags=re.IGNORECASE)
-            raw_text = re.sub(r'\s*```$', '', raw_text)
-            raw_text = raw_text.strip()
-            return json.loads(raw_text)
-            
-        except asyncio.TimeoutError:
-            last_error = "AI generation timed out"
-            logger.error(last_error)
-        except json.JSONDecodeError as je:
-            last_error = f"JSON Parsing Error: {je}"
-            logger.error(last_error)
         except Exception as e:
-            last_error = f"Google API Error: {str(e)}"
-            logger.error(last_error)
-        await asyncio.sleep(1)
-        
-    raise HTTPException(status_code=500, detail=f"AI Engine failed: {last_error}")
+            logger.warning(f"[Gemini] Could not instantiate '{current_model}': {e} — skipping.")
+            continue
+
+        last_error = ""
+        for attempt in range(3):
+            try:
+                result = await asyncio.wait_for(
+                    asyncio.to_thread(model.generate_content, prompt),
+                    timeout=60.0
+                )
+
+                if not result.candidates:
+                    feedback = result.prompt_feedback if hasattr(result, 'prompt_feedback') else None
+                    block_reason = feedback.block_reason if feedback and hasattr(feedback, 'block_reason') else "Unknown"
+                    last_error = f"Content blocked. Reason: {block_reason}"
+                    logger.warning(last_error)
+                    await asyncio.sleep(1)
+                    continue
+
+                raw_text = result.text.strip()
+                if not raw_text:
+                    last_error = "Empty response from AI"
+                    logger.warning(last_error)
+                    await asyncio.sleep(1)
+                    continue
+
+                # Strip accidental markdown fences
+                raw_text = re.sub(r'^```(?:json)?\s*', '', raw_text, flags=re.IGNORECASE)
+                raw_text = re.sub(r'\s*```$', '', raw_text)
+                raw_text = raw_text.strip()
+
+                parsed = json.loads(raw_text)
+                if current_model != model_name:
+                    logger.warning(f"[Gemini] Used fallback model '{current_model}' (primary '{model_name}' was unavailable).")
+                return parsed
+
+            except asyncio.TimeoutError:
+                last_error = "AI generation timed out"
+                logger.error(f"[Gemini] {last_error} (model={current_model}, attempt={attempt+1})")
+
+            except json.JSONDecodeError as je:
+                last_error = f"JSON parse error: {je}"
+                logger.error(f"[Gemini] {last_error} (model={current_model}, attempt={attempt+1})")
+
+            except (NotFound, InvalidArgument) as e:
+                # Model doesn't exist on this API key/project — break inner loop,
+                # move to next model in chain immediately (no point retrying).
+                last_error = f"Model not found: {e}"
+                logger.warning(f"[Gemini] {last_error} — trying next fallback.")
+                break  # <-- exits the retry loop, continues outer model_chain loop
+
+            except Exception as e:
+                last_error = f"Google API Error: {str(e)}"
+                logger.error(f"[Gemini] {last_error} (model={current_model}, attempt={attempt+1})")
+
+            await asyncio.sleep(1)
+
+        else:
+            # All 3 attempts exhausted without hitting a 404 — move to next model
+            logger.warning(f"[Gemini] All retries failed for '{current_model}': {last_error}")
+            continue
+
+    # Every model in the chain failed
+    raise HTTPException(
+        status_code=500,
+        detail=f"AI Engine failed: all models exhausted. Last error: {last_error}"
+    )
 
 # ============================================================
 # API ROUTES
@@ -562,11 +631,11 @@ async def generate_ws(payload: WorksheetRequest, user: User = Depends(require_us
     await db.worksheets.insert_one(ws_doc)
     await db.users.update_one({"user_id": user.user_id}, {"$inc": {"free_used": 1}})
     
-    response = {k: v for k, v in ws_doc.items() if k != "_id"}
+    result = {k: v for k, v in ws_doc.items() if k != "_id"}
     if should_show_ad:
-        response["show_ad"] = True
-        response["ad_duration"] = ad_duration
-    return response
+        result["show_ad"] = True
+        result["ad_duration"] = ad_duration
+    return result
 
 @api_router.get("/worksheets")
 async def list_ws(user: User = Depends(require_user)):
@@ -621,7 +690,7 @@ Rules:
 - Only modify what was requested.
 - OUTPUT MUST BE RAW JSON ONLY."""
     
-    edited_content = await _run_gemini(edit_prompt, ws["level"], model_name=TIER_CONFIG["premium"]["model"])
+    edited_content = await _run_gemini(edit_prompt, ws["level"], model_name=GEMINI_MODEL_PREMIUM)
     
     await db.users.update_one({"user_id": user.user_id}, {"$inc": {"ai_edit_credits": -1}})
     
@@ -681,7 +750,7 @@ Rules:
 - OUTPUT MUST BE RAW, VALID JSON ONLY.
 - Structure: {{"unit_title": "...", "weeks": [{{"week_number": 1, "lessons": [...]}}]}}"""
     
-    plan_data = await _run_gemini(prompt, payload.level, model_name=config["model"])
+    plan_data = await _run_gemini(prompt, payload.level, model_name=GEMINI_MODEL_PREMIUM)
     
     plan_id = f"lp_{uuid.uuid4().hex[:12]}"
     plan_doc = {
@@ -966,11 +1035,17 @@ async def paypal_webhook(request: Request):
 # MIDDLEWARE & ROUTING
 # ============================================================
 app.include_router(api_router)
-app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
 
 @app.get("/")
 async def root():
-    return {"app": "SmartGiaoAn API", "status": "operational", "version": "3.2.1"}
+    return {"app": "SmartGiaoAn API", "status": "operational", "version": "3.2.2"}
 
 @app.get("/health")
 async def health():
