@@ -36,9 +36,6 @@ PAYPAL_CLIENT_ID = os.environ.get('PAYPAL_CLIENT_ID', '')
 PAYPAL_CLIENT_SECRET = os.environ.get('PAYPAL_CLIENT_SECRET', '')
 PAYPAL_BASE_URL = os.environ.get('PAYPAL_BASE_URL', 'https://api-m.sandbox.paypal.com')
 
-# SEPARATE FREE TIER API KEY — isolate cheap usage
-FREE_GEMINI_API_KEY = os.environ.get('FREE_GEMINI_API_KEY', '')
-
 _cors_env = os.environ.get('CORS_ORIGINS', '')
 CORS_ORIGINS = [o.strip() for o in _cors_env.split(',') if o.strip()] or [
     "https://smartgiaoan.site",
@@ -273,12 +270,12 @@ def require_tier(min_tier: str):
     return _require_tier
 
 # ============================================================
-# PAYPAL HELPERS
+# PAYPAL HELPERS (Added safety timeouts)
 # ============================================================
 async def _paypal_access_token() -> str:
     if not PAYPAL_CLIENT_ID or not PAYPAL_CLIENT_SECRET:
         raise HTTPException(status_code=500, detail="PayPal credentials not configured")
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=15.0) as client:
         auth_str = base64.b64encode(f"{PAYPAL_CLIENT_ID}:{PAYPAL_CLIENT_SECRET}".encode()).decode()
         r = await client.post(
             f"{PAYPAL_BASE_URL}/v1/oauth2/token",
@@ -290,7 +287,7 @@ async def _paypal_access_token() -> str:
 
 async def verify_paypal_order(order_id: str) -> dict:
     token = await _paypal_access_token()
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=15.0) as client:
         r = await client.get(
             f"{PAYPAL_BASE_URL}/v2/checkout/orders/{order_id}",
             headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
@@ -300,7 +297,7 @@ async def verify_paypal_order(order_id: str) -> dict:
 
 async def verify_paypal_subscription(subscription_id: str) -> dict:
     token = await _paypal_access_token()
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=15.0) as client:
         r = await client.get(
             f"{PAYPAL_BASE_URL}/v1/billing/subscriptions/{subscription_id}",
             headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
@@ -309,13 +306,10 @@ async def verify_paypal_subscription(subscription_id: str) -> dict:
         return r.json()
 
 # ============================================================
-# GEMINI ENGINE — DUAL API KEY SYSTEM
+# GEMINI ENGINE — UNIFIED CONFIGURATION
 # ============================================================
-
-# PAID TIER SETUP (ADC or main API key)
 adc_json_raw = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS_JSON', '').strip()
 api_key = os.environ.get('GEMINI_API_KEY', '').strip()
-paid_credentials = None
 
 if adc_json_raw:
     try:
@@ -325,35 +319,21 @@ if adc_json_raw:
             json.dump(creds_dict, f)
         os.chmod(adc_path, 0o600)
         os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = adc_path
+        
         import google.auth
         paid_credentials, project_id = google.auth.default()
         genai.configure(credentials=paid_credentials)
-        logger.info(f"Paid tier: Enterprise ADC (project: {project_id}).")
+        logger.info(f"AI Engine: Using Enterprise ADC (project: {project_id}).")
     except Exception as e:
-        logger.error(f"Paid ADC failed: {e}")
+        logger.error(f"ADC setup failed: {e}. Falling back to API Key if available.")
         if api_key:
             genai.configure(api_key=api_key)
-            logger.info("Paid tier: Fallback to API key.")
+            logger.info("AI Engine: Fallback to standard API key.")
 elif api_key:
     genai.configure(api_key=api_key)
-    logger.info("Paid tier: Using API key.")
+    logger.info("AI Engine: Using standard API key.")
 else:
-    logger.warning("NO PAID CREDENTIALS FOUND!")
-
-# FREE TIER SETUP — completely separate client
-free_genai = None
-if FREE_GEMINI_API_KEY:
-    try:
-        # Create a fresh genai module instance for free tier
-        import importlib
-        free_genai = importlib.import_module('google.generativeai')
-        free_genai.configure(api_key=FREE_GEMINI_API_KEY)
-        logger.info("Free tier: Separate API key configured.")
-    except Exception as e:
-        logger.error(f"Free tier API key failed: {e}")
-        free_genai = None
-else:
-    logger.warning("NO FREE GEMINI API KEY! Free tier will fail.")
+    logger.warning("CRITICAL: NO GOOGLE CREDENTIALS FOUND! AI Engine will fail.")
 
 def build_system_prompt(level: str) -> str:
     base_prompt = """You are a senior Cambridge ESOL examiner and ESL curriculum designer specialising in Vietnamese learners.
@@ -376,10 +356,9 @@ Rules:
 async def _run_gemini(prompt: str, level: str, model_name: str = "gemini-1.5-pro-latest", is_free_tier: bool = False) -> dict:
     dynamic_instruction = build_system_prompt(level)
     
-    # Choose the right genai instance
-    genai_client = free_genai if (is_free_tier and free_genai) else genai
-    
-    model = genai_client.GenerativeModel(
+    # We use the globally configured genai client for all requests. 
+    # Gemini 1.5 Flash handles free-tier routing efficiently without needing a hacky secondary module load.
+    model = genai.GenerativeModel(
         model_name=model_name,
         system_instruction=dynamic_instruction,
         generation_config={"response_mime_type": "application/json", "temperature": 0.8},
@@ -395,7 +374,7 @@ async def _run_gemini(prompt: str, level: str, model_name: str = "gemini-1.5-pro
             if not result.candidates:
                 feedback = result.prompt_feedback if hasattr(result, 'prompt_feedback') else None
                 block_reason = feedback.block_reason if feedback and hasattr(feedback, 'block_reason') else "Unknown"
-                last_error = f"Content blocked. Reason: {block_reason}"
+                last_error = f"Content blocked by safety filters. Reason: {block_reason}"
                 logger.warning(last_error)
                 await asyncio.sleep(1)
                 continue
@@ -407,16 +386,19 @@ async def _run_gemini(prompt: str, level: str, model_name: str = "gemini-1.5-pro
                 await asyncio.sleep(1)
                 continue
             
-            raw_text = re.sub(r'^```(?:json)?\s*', '', raw_text, flags=re.IGNORECASE)
-            raw_text = re.sub(r'\s*```$', '', raw_text)
-            raw_text = raw_text.strip()
+            # Robust JSON block extraction
+            if raw_text.startswith("```"):
+                raw_text = raw_text.strip("` \n")
+                if raw_text.lower().startswith("json"):
+                    raw_text = raw_text[4:].strip()
+            
             return json.loads(raw_text)
             
         except asyncio.TimeoutError:
-            last_error = "AI generation timed out"
+            last_error = "AI generation timed out after 60 seconds"
             logger.error(last_error)
         except json.JSONDecodeError as je:
-            last_error = f"JSON Parsing Error: {je}"
+            last_error = f"JSON Parsing Error: {je} \nText Received: {raw_text[:100]}..."
             logger.error(last_error)
         except Exception as e:
             last_error = f"Google API Error: {str(e)}"
@@ -470,7 +452,7 @@ async def auth_session_exchange(payload: SessionExchangeRequest, response: Respo
         raise HTTPException(status_code=400, detail="Missing session ID")
     try:
         async with httpx.AsyncClient(timeout=30.0, follow_redirects=True, trust_env=False) as hx:
-            url = f"https://auth.emergentagent.com/api/session/{sid}"
+            url = f"[https://auth.emergentagent.com/api/session/](https://auth.emergentagent.com/api/session/){sid}"
             r = await hx.get(url, headers={"Accept": "application/json", "User-Agent": "SmartGiaoAn-Backend/1.0"})
             if r.status_code == 404:
                 raise HTTPException(status_code=401, detail="Google Session ID was already consumed. Try clicking Google Login again.")
@@ -543,24 +525,20 @@ async def generate_ws(payload: WorksheetRequest, user: User = Depends(require_us
     user = await refresh_user_credits(user)
     config = TIER_CONFIG.get(user.subscription_tier, TIER_CONFIG["free"])
     
-    # Check quota for paid tiers
     if user.subscription_tier != "free":
         total_allowed = config["monthly_quota"] + user.bonus_credits
         if user.free_used >= total_allowed:
             raise HTTPException(status_code=402, detail="Monthly quota reached. Upgrade for more.")
     
-    # Determine if ad should play (free tier only)
     should_show_ad = False
     ad_duration = 0
     if user.subscription_tier == "free" and user.free_used > 0:
-        # Progressive ad frequency: starts at 20%, caps at 70%
         base_freq = config.get("ad_frequency_base", 0.3)
-        usage_factor = min(user.free_used / 10, 1.0)  # Scales up with usage
-        ad_probability = base_freq + (usage_factor * 0.4)  # Max 70%
+        usage_factor = min(user.free_used / 10, 1.0)
+        ad_probability = base_freq + (usage_factor * 0.4)
         should_show_ad = random.random() < ad_probability
         
         if should_show_ad:
-            # Random duration: 15s, 30s, or 60s
             ad_duration = random.choice([15, 30, 60])
     
     prompt = f"""
@@ -570,7 +548,6 @@ async def generate_ws(payload: WorksheetRequest, user: User = Depends(require_us
     You MUST return the content using structured keys appropriate for an ESL worksheet.
     """
     
-    # Use FREE API key for free tier, PAID for everything else
     is_free = user.subscription_tier == "free"
     ws_data = await _run_gemini(prompt, payload.level, model_name=config["model"], is_free_tier=is_free)
 
@@ -606,7 +583,6 @@ async def get_worksheet(worksheet_id: str, user: User = Depends(require_user)):
 
 @api_router.patch("/worksheets/{worksheet_id}")
 async def update_worksheet(worksheet_id: str, payload: UpdateWorksheetRequest, user: User = Depends(require_user)):
-    # Word editor is FREE for everyone — no tier check
     ws = await db.worksheets.find_one({"worksheet_id": worksheet_id, "user_id": user.user_id})
     if not ws:
         raise HTTPException(status_code=404, detail="Worksheet not found")
@@ -627,7 +603,6 @@ async def update_worksheet(worksheet_id: str, payload: UpdateWorksheetRequest, u
 async def ai_edit_worksheet(payload: AIEditRequest, user: User = Depends(require_tier("premium"))):
     user = await refresh_user_credits(user)
     
-    # Check AI edit credits
     if user.ai_edit_credits < 1:
         raise HTTPException(status_code=402, detail="No AI edit credits. Buy more or watch an ad.")
     
@@ -649,7 +624,6 @@ Rules:
     
     edited_content = await _run_gemini(edit_prompt, ws["level"], model_name=TIER_CONFIG["premium"]["model"], is_free_tier=False)
     
-    # Deduct credit
     await db.users.update_one({"user_id": user.user_id}, {"$inc": {"ai_edit_credits": -1}})
     
     new_ws_id = f"ws_{uuid.uuid4().hex[:12]}"
@@ -670,20 +644,18 @@ Rules:
     await db.worksheets.insert_one(new_doc)
     return {k: v for k, v in new_doc.items() if k != "_id"}
 
-# --- REWARDED ADS (Works for both worksheet credits AND AI edit credits) ---
+# --- REWARDED ADS ---
 @api_router.post("/usage/grant-rewarded")
 async def grant_ad_reward(payload: RewardedAdRequest, user: User = Depends(require_user)):
     reward_type = payload.reward_type
     
     if reward_type == "ai_edit":
-        # Only premium users can earn AI edit credits via ads
         if user.subscription_tier != "premium":
             raise HTTPException(status_code=403, detail="AI edit rewards require Premium.")
         bonus = 1 if payload.tier <= 15 else 2 if payload.tier <= 30 else 3
         await db.users.update_one({"user_id": user.user_id}, {"$inc": {"ai_edit_credits": bonus}})
         return {"status": "reward_granted", "amount": bonus, "type": "ai_edit_credit"}
     else:
-        # Standard worksheet credit
         bonus = 1 if payload.tier <= 15 else 2
         await db.users.update_one({"user_id": user.user_id}, {"$inc": {"bonus_credits": bonus}})
         return {"status": "reward_granted", "amount": bonus, "type": "worksheet_credit"}
@@ -799,7 +771,6 @@ async def paypal_capture(payload: PayPalCaptureRequest, user: User = Depends(req
         )
         return {"status": "success", "tier": tier}
     elif product_type == "ai_edit_pack":
-        # One-time purchase: 10 AI edits for £5
         try:
             order_data = await verify_paypal_order(payload.order_id)
         except Exception as e:
