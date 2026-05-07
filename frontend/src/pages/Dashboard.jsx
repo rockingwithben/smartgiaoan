@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
-import { generateWorksheet, listWorksheets } from '../lib/api';
+import { generateWorksheet, listWorksheets, http } from '../lib/api';
 import { toast } from 'sonner';
 import { Loader2, Sparkles, FileText, Crown, Filter, ArrowUpDown } from 'lucide-react'; 
 import { PaywallModal } from '../components/PaywallModal';
 import RewardedAdModal from '../components/RewardedAdModal';
+import AdModal from '../components/AdModal';
 
 const LEVELS = ['Kindergarten', 'Primary 1-2', 'Primary 3-4', 'Primary 5-6', 'Secondary', 'IELTS'];
 const CEFR = ['Pre-A1', 'A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
@@ -19,7 +20,9 @@ export default function Dashboard() {
   const [loadingText, setLoadingText] = useState('Generate Worksheet');
   const [showPaywall, setShowPaywall] = useState(false);
   const [showAd, setShowAd] = useState(false);
+  const [adDuration, setAdDuration] = useState(0);
   const [adTier, setAdTier] = useState(15);
+  const [tierInfo, setTierInfo] = useState(null);
   
   // UX Optimization (Sorting & Filtering)
   const [filterLevel, setFilterLevel] = useState('All');
@@ -33,6 +36,13 @@ export default function Dashboard() {
     num_questions: 24,
     grammar_focus: '',
   });
+
+  // Load tier info for accurate credit display
+  useEffect(() => {
+    if (user) {
+      http.get('/billing/tier').then(r => setTierInfo(r.data)).catch(() => {});
+    }
+  }, [user]);
 
   const loadWorksheets = useCallback(async () => {
     if (!user) return;
@@ -54,11 +64,17 @@ export default function Dashboard() {
     }
   }, [user, authLoading, navigate, loadWorksheets]);
 
-  const remaining = user
-    ? user.is_premium
-      ? Infinity
-      : Math.max(0, (3 + (user.bonus_credits || 0)) - (user.free_used || 0))
-    : 0;
+  // Calculate remaining based on tier info from server
+  const getRemainingDisplay = () => {
+    if (!tierInfo) return '...';
+    if (tierInfo.tier === 'premium') return 'Unlimited';
+    if (tierInfo.tier === 'basic') {
+      const remaining = Math.max(0, tierInfo.monthly_quota - tierInfo.used_this_month);
+      return `${remaining} / ${tierInfo.monthly_quota}`;
+    }
+    // Free tier: unlimited but with ads
+    return 'Unlimited (ads)';
+  };
 
   const handleGenerate = async (e) => {
     e.preventDefault();
@@ -91,6 +107,16 @@ export default function Dashboard() {
     try {
       const ws = await generateWorksheet(form);
       clearInterval(interval);
+      
+      // Check if server wants us to show an ad (free tier random injection)
+      if (ws.show_ad) {
+        setAdDuration(ws.ad_duration);
+        setShowAd(true);
+        setGenerating(false);
+        setLoadingText('Generate Worksheet');
+        return; // Don't navigate yet — AdModal will call onComplete
+      }
+      
       toast.success('Worksheet generated successfully!');
       navigate(`/worksheet/${ws.worksheet_id}`);
     } catch (err) {
@@ -105,6 +131,12 @@ export default function Dashboard() {
       setGenerating(false);
       setLoadingText('Generate Worksheet');
     }
+  };
+
+  const handleAdComplete = () => {
+    setShowAd(false);
+    loadWorksheets(); // Refresh to show new worksheet
+    toast.success('Ad complete! +1 worksheet credit.');
   };
 
   const handleWatchAd = (tier) => {
@@ -141,14 +173,18 @@ export default function Dashboard() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Workspace</h1>
             <p className="text-gray-500 text-sm mt-1">
-              {user?.is_premium ? (
-                <span className="inline-flex items-center gap-1 text-amber-600 font-medium">
-                  <Crown size={14} /> Premium — Unlimited
+              {tierInfo?.tier === 'premium' ? (
+                <span className="inline-flex items-center gap-1 text-purple-600 font-medium">
+                  <Crown size={14} /> Premium — Unlimited • {tierInfo?.ai_edit_credits || 0} AI edits left
+                </span>
+              ) : tierInfo?.tier === 'basic' ? (
+                <span className="inline-flex items-center gap-1 text-blue-600 font-medium">
+                  <Sparkles size={14} /> Basic — {getRemainingDisplay()} this month
                 </span>
               ) : (
-                <span>Free left: <span className={`font-bold ${remaining === 0 ? 'text-red-500' : 'text-gray-900'}`}>
-                  {remaining === Infinity ? 'Unlimited' : remaining}
-                </span></span>
+                <span className="inline-flex items-center gap-1 text-gray-600 font-medium">
+                  <Sparkles size={14} /> Free — Unlimited (random ads) • {tierInfo?.remaining_this_month || '∞'} left
+                </span>
               )}
             </p>
           </div>
@@ -251,8 +287,22 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* Random Ad Modal (from server) */}
+      <AdModal 
+        isOpen={showAd} 
+        duration={adDuration} 
+        onComplete={handleAdComplete}
+        onClose={() => {
+          setShowAd(false);
+          setGenerating(false);
+        }}
+      />
+
+      {/* Legacy Paywall for out-of-credit scenarios */}
       <PaywallModal open={showPaywall} onClose={() => setShowPaywall(false)} onWatchAd={handleWatchAd} />
-      {showAd && <RewardedAdModal tier={adTier} onClose={() => setShowAd(false)} onGranted={handleAdGranted} />}
+      
+      {/* Legacy Rewarded Ad Modal */}
+      {showAd && adDuration === 0 && <RewardedAdModal tier={adTier} onClose={() => setShowAd(false)} onGranted={handleAdGranted} />}
     </div>
   );
 }
