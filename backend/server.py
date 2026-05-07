@@ -13,6 +13,7 @@ import hashlib
 import secrets
 import re
 import base64
+import random
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, Any, Dict, List
@@ -35,6 +36,9 @@ PAYPAL_CLIENT_ID = os.environ.get('PAYPAL_CLIENT_ID', '')
 PAYPAL_CLIENT_SECRET = os.environ.get('PAYPAL_CLIENT_SECRET', '')
 PAYPAL_BASE_URL = os.environ.get('PAYPAL_BASE_URL', 'https://api-m.sandbox.paypal.com')
 
+# SEPARATE FREE TIER API KEY — isolate cheap usage
+FREE_GEMINI_API_KEY = os.environ.get('FREE_GEMINI_API_KEY', '')
+
 _cors_env = os.environ.get('CORS_ORIGINS', '')
 CORS_ORIGINS = [o.strip() for o in _cors_env.split(',') if o.strip()] or [
     "https://smartgiaoan.site",
@@ -48,26 +52,27 @@ CORS_ORIGINS = [o.strip() for o in _cors_env.split(',') if o.strip()] or [
 TIER_CONFIG = {
     "free": {
         "model": "gemini-1.5-flash",
-        "monthly_quota": 3,
-        "human_editor_credits_per_month": 0,
+        "monthly_quota": 999999,  # Unlimited — ads are the throttle
+        "ai_edits_per_month": 0,
+        "has_word_editor": True,
         "has_ai_editor": False,
-        "has_word_editor": False,
         "has_ads": True,
+        "ad_frequency_base": 0.3,  # 30% chance of ad after worksheet
     },
     "basic": {
         "model": "gemini-1.5-flash",
         "monthly_quota": 50,
-        "human_editor_credits_per_month": 1,
-        "has_ai_editor": False,
+        "ai_edits_per_month": 0,
         "has_word_editor": True,
+        "has_ai_editor": False,
         "has_ads": False,
     },
     "premium": {
         "model": "gemini-1.5-pro-latest",
-        "monthly_quota": 999,
-        "human_editor_credits_per_month": 3,
-        "has_ai_editor": True,
+        "monthly_quota": 999999,
+        "ai_edits_per_month": 50,
         "has_word_editor": True,
+        "has_ai_editor": True,
         "has_ads": False,
     }
 }
@@ -97,7 +102,7 @@ async def lifespan(app: FastAPI):
 # ============================================================
 # APP SETUP
 # ============================================================
-app = FastAPI(title="SmartGiaoAn API", version="3.0.0", lifespan=lifespan)
+app = FastAPI(title="SmartGiaoAn API", version="3.1.0", lifespan=lifespan)
 api_router = APIRouter(prefix="/api")
 
 def hash_password(password: str) -> str:
@@ -127,7 +132,7 @@ class User(BaseModel):
     is_premium: bool = False
     free_used: int = 0
     bonus_credits: int = 0
-    human_editor_credits: int = 0
+    ai_edit_credits: int = 0
     monthly_reset_at: Optional[datetime] = None
     paypal_subscription_id: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -152,14 +157,11 @@ class EmailAuthRequest(BaseModel):
 
 class RewardedAdRequest(BaseModel):
     tier: int
+    reward_type: str = "worksheet"  # "worksheet" or "ai_edit"
 
 class AIEditRequest(BaseModel):
     worksheet_id: str
     command: str
-
-class HumanEditRequest(BaseModel):
-    worksheet_id: str
-    notes: Optional[str] = ""
 
 class UpdateWorksheetRequest(BaseModel):
     title: Optional[str] = None
@@ -185,9 +187,10 @@ def _parse_dt(v):
 async def _load_user(doc: dict) -> Optional[User]:
     if not doc:
         return None
-    # Migration: old users have is_premium but no subscription_tier
     if "subscription_tier" not in doc:
         doc["subscription_tier"] = "premium" if doc.get("is_premium") else "free"
+    if "ai_edit_credits" not in doc:
+        doc["ai_edit_credits"] = 0
     return User(**doc)
 
 async def refresh_user_credits(user: User) -> User:
@@ -209,12 +212,12 @@ async def refresh_user_credits(user: User) -> User:
             await db.users.update_one(
                 {"user_id": user.user_id},
                 {"$set": {
-                    "human_editor_credits": config["human_editor_credits_per_month"],
+                    "ai_edit_credits": config["ai_edits_per_month"],
                     "monthly_reset_at": (now + timedelta(days=30)).isoformat(),
                     "free_used": 0
                 }}
             )
-            user.human_editor_credits = config["human_editor_credits_per_month"]
+            user.ai_edit_credits = config["ai_edits_per_month"]
             user.free_used = 0
             user.monthly_reset_at = now + timedelta(days=30)
     return user
@@ -306,11 +309,13 @@ async def verify_paypal_subscription(subscription_id: str) -> dict:
         return r.json()
 
 # ============================================================
-# GEMINI & DYNAMIC PEDAGOGY ENGINE
+# GEMINI ENGINE — DUAL API KEY SYSTEM
 # ============================================================
+
+# PAID TIER SETUP (ADC or main API key)
 adc_json_raw = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS_JSON', '').strip()
 api_key = os.environ.get('GEMINI_API_KEY', '').strip()
-adc_configured = False
+paid_credentials = None
 
 if adc_json_raw:
     try:
@@ -321,20 +326,34 @@ if adc_json_raw:
         os.chmod(adc_path, 0o600)
         os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = adc_path
         import google.auth
-        credentials, project_id = google.auth.default()
-        genai.configure(credentials=credentials)
-        logger.info(f"Using Enterprise ADC credentials for Google API (project: {project_id}).")
-        adc_configured = True
-    except json.JSONDecodeError:
-        logger.error("GOOGLE_APPLICATION_CREDENTIALS_JSON is not valid JSON. Falling back.")
+        paid_credentials, project_id = google.auth.default()
+        genai.configure(credentials=paid_credentials)
+        logger.info(f"Paid tier: Enterprise ADC (project: {project_id}).")
     except Exception as e:
-        logger.error(f"ADC setup failed: {e}. Falling back.")
-
-if not adc_configured and api_key:
+        logger.error(f"Paid ADC failed: {e}")
+        if api_key:
+            genai.configure(api_key=api_key)
+            logger.info("Paid tier: Fallback to API key.")
+elif api_key:
     genai.configure(api_key=api_key)
-    logger.info("Using standard API key.")
-elif not adc_configured and not api_key:
-    logger.warning("NO GOOGLE CREDENTIALS FOUND! AI Engine will fail.")
+    logger.info("Paid tier: Using API key.")
+else:
+    logger.warning("NO PAID CREDENTIALS FOUND!")
+
+# FREE TIER SETUP — completely separate client
+free_genai = None
+if FREE_GEMINI_API_KEY:
+    try:
+        # Create a fresh genai module instance for free tier
+        import importlib
+        free_genai = importlib.import_module('google.generativeai')
+        free_genai.configure(api_key=FREE_GEMINI_API_KEY)
+        logger.info("Free tier: Separate API key configured.")
+    except Exception as e:
+        logger.error(f"Free tier API key failed: {e}")
+        free_genai = None
+else:
+    logger.warning("NO FREE GEMINI API KEY! Free tier will fail.")
 
 def build_system_prompt(level: str) -> str:
     base_prompt = """You are a senior Cambridge ESOL examiner and ESL curriculum designer specialising in Vietnamese learners.
@@ -354,13 +373,18 @@ Rules:
         base_prompt += "\n- SECONDARY/IELTS OVERRIDE: Rigorous academic content, complex reading comprehension, and full answer keys."
     return base_prompt
 
-async def _run_gemini(prompt: str, level: str, model_name: str = "gemini-1.5-pro-latest") -> dict:
+async def _run_gemini(prompt: str, level: str, model_name: str = "gemini-1.5-pro-latest", is_free_tier: bool = False) -> dict:
     dynamic_instruction = build_system_prompt(level)
-    model = genai.GenerativeModel(
+    
+    # Choose the right genai instance
+    genai_client = free_genai if (is_free_tier and free_genai) else genai
+    
+    model = genai_client.GenerativeModel(
         model_name=model_name,
         system_instruction=dynamic_instruction,
         generation_config={"response_mime_type": "application/json", "temperature": 0.8},
     )
+    
     last_error = ""
     for attempt in range(3):
         try:
@@ -371,22 +395,25 @@ async def _run_gemini(prompt: str, level: str, model_name: str = "gemini-1.5-pro
             if not result.candidates:
                 feedback = result.prompt_feedback if hasattr(result, 'prompt_feedback') else None
                 block_reason = feedback.block_reason if feedback and hasattr(feedback, 'block_reason') else "Unknown"
-                last_error = f"Content blocked by safety filters. Reason: {block_reason}"
+                last_error = f"Content blocked. Reason: {block_reason}"
                 logger.warning(last_error)
                 await asyncio.sleep(1)
                 continue
+            
             raw_text = result.text.strip()
             if not raw_text:
                 last_error = "Empty response from AI"
                 logger.warning(last_error)
                 await asyncio.sleep(1)
                 continue
+            
             raw_text = re.sub(r'^```(?:json)?\s*', '', raw_text, flags=re.IGNORECASE)
             raw_text = re.sub(r'\s*```$', '', raw_text)
             raw_text = raw_text.strip()
             return json.loads(raw_text)
+            
         except asyncio.TimeoutError:
-            last_error = "AI generation timed out after 60 seconds"
+            last_error = "AI generation timed out"
             logger.error(last_error)
         except json.JSONDecodeError as je:
             last_error = f"JSON Parsing Error: {je}"
@@ -395,6 +422,7 @@ async def _run_gemini(prompt: str, level: str, model_name: str = "gemini-1.5-pro
             last_error = f"Google API Error: {str(e)}"
             logger.error(last_error)
         await asyncio.sleep(1)
+        
     raise HTTPException(status_code=500, detail=f"AI Engine failed: {last_error}")
 
 # ============================================================
@@ -417,7 +445,7 @@ async def auth_register(payload: EmailAuthRequest, response: Response):
         "password_hash": hash_password(payload.password),
         "is_premium": is_admin,
         "subscription_tier": "premium" if is_admin else "free",
-        "free_used": 0, "bonus_credits": 0, "human_editor_credits": 0,
+        "free_used": 0, "bonus_credits": 0, "ai_edit_credits": 0,
         "created_at": _now().isoformat()
     }
     await db.users.insert_one(doc)
@@ -469,7 +497,7 @@ async def auth_session_exchange(payload: SessionExchangeRequest, response: Respo
             "role": "Teacher",
             "is_premium": is_admin,
             "subscription_tier": "premium" if is_admin else "free",
-            "free_used": 0, "bonus_credits": 0, "human_editor_credits": 0,
+            "free_used": 0, "bonus_credits": 0, "ai_edit_credits": 0,
             "created_at": _now().isoformat()
         }
         await db.users.insert_one(doc)
@@ -514,17 +542,37 @@ async def delete_account(user: User = Depends(require_user)):
 async def generate_ws(payload: WorksheetRequest, user: User = Depends(require_user)):
     user = await refresh_user_credits(user)
     config = TIER_CONFIG.get(user.subscription_tier, TIER_CONFIG["free"])
-    total_allowed = config["monthly_quota"] + user.bonus_credits
-    if user.free_used >= total_allowed:
-        raise HTTPException(status_code=402, detail="Monthly quota reached. Upgrade for more worksheets.")
-
+    
+    # Check quota for paid tiers
+    if user.subscription_tier != "free":
+        total_allowed = config["monthly_quota"] + user.bonus_credits
+        if user.free_used >= total_allowed:
+            raise HTTPException(status_code=402, detail="Monthly quota reached. Upgrade for more.")
+    
+    # Determine if ad should play (free tier only)
+    should_show_ad = False
+    ad_duration = 0
+    if user.subscription_tier == "free" and user.free_used > 0:
+        # Progressive ad frequency: starts at 20%, caps at 70%
+        base_freq = config.get("ad_frequency_base", 0.3)
+        usage_factor = min(user.free_used / 10, 1.0)  # Scales up with usage
+        ad_probability = base_freq + (usage_factor * 0.4)  # Max 70%
+        should_show_ad = random.random() < ad_probability
+        
+        if should_show_ad:
+            # Random duration: 15s, 30s, or 60s
+            ad_duration = random.choice([15, 30, 60])
+    
     prompt = f"""
     Design a {payload.skill} worksheet for {payload.level} (CEFR {payload.cefr}) students.
     Topic: '{payload.topic}'. Length: {payload.num_questions} items.
     Grammar focus: {payload.grammar_focus or 'None'}.
-    You MUST return the content using structured keys appropriate for an ESL worksheet (e.g. "title", "reading_passage", "exercises", "answer_key").
+    You MUST return the content using structured keys appropriate for an ESL worksheet.
     """
-    ws_data = await _run_gemini(prompt, payload.level, model_name=config["model"])
+    
+    # Use FREE API key for free tier, PAID for everything else
+    is_free = user.subscription_tier == "free"
+    ws_data = await _run_gemini(prompt, payload.level, model_name=config["model"], is_free_tier=is_free)
 
     ws_id = f"ws_{uuid.uuid4().hex[:12]}"
     ws_doc = {
@@ -536,7 +584,12 @@ async def generate_ws(payload: WorksheetRequest, user: User = Depends(require_us
     }
     await db.worksheets.insert_one(ws_doc)
     await db.users.update_one({"user_id": user.user_id}, {"$inc": {"free_used": 1}})
-    return {k: v for k, v in ws_doc.items() if k != "_id"}
+    
+    response = {k: v for k, v in ws_doc.items() if k != "_id"}
+    if should_show_ad:
+        response["show_ad"] = True
+        response["ad_duration"] = ad_duration
+    return response
 
 @api_router.get("/worksheets")
 async def list_ws(user: User = Depends(require_user)):
@@ -553,10 +606,7 @@ async def get_worksheet(worksheet_id: str, user: User = Depends(require_user)):
 
 @api_router.patch("/worksheets/{worksheet_id}")
 async def update_worksheet(worksheet_id: str, payload: UpdateWorksheetRequest, user: User = Depends(require_user)):
-    user = await refresh_user_credits(user)
-    config = TIER_CONFIG.get(user.subscription_tier, TIER_CONFIG["free"])
-    if not config["has_word_editor"]:
-        raise HTTPException(status_code=402, detail="Word editor requires Basic or Premium.")
+    # Word editor is FREE for everyone — no tier check
     ws = await db.worksheets.find_one({"worksheet_id": worksheet_id, "user_id": user.user_id})
     if not ws:
         raise HTTPException(status_code=404, detail="Worksheet not found")
@@ -575,21 +625,33 @@ async def update_worksheet(worksheet_id: str, payload: UpdateWorksheetRequest, u
 # --- AI EDITOR (PREMIUM ONLY) ---
 @api_router.post("/worksheets/ai-edit")
 async def ai_edit_worksheet(payload: AIEditRequest, user: User = Depends(require_tier("premium"))):
+    user = await refresh_user_credits(user)
+    
+    # Check AI edit credits
+    if user.ai_edit_credits < 1:
+        raise HTTPException(status_code=402, detail="No AI edit credits. Buy more or watch an ad.")
+    
     ws = await db.worksheets.find_one({"worksheet_id": payload.worksheet_id, "user_id": user.user_id})
     if not ws:
         raise HTTPException(status_code=404, detail="Worksheet not found")
+    
     current_content = json.dumps(ws["content"], indent=2)
-    edit_prompt = f"""You are editing an ESL worksheet. Here is the current content:
+    edit_prompt = f"""You are editing an ESL worksheet. Current content:
 {current_content}
 
 TEACHER'S REQUEST: {payload.command}
 
 Rules:
-- Return the FULL updated worksheet as valid JSON.
-- Preserve the existing structure (title, sections, exercises).
-- Only modify what the teacher asked for.
-- OUTPUT MUST BE RAW JSON ONLY. Do not use markdown code blocks."""
-    edited_content = await _run_gemini(edit_prompt, ws["level"], model_name=TIER_CONFIG["premium"]["model"])
+- Return FULL updated worksheet as valid JSON.
+- Preserve existing structure.
+- Only modify what was requested.
+- OUTPUT MUST BE RAW JSON ONLY."""
+    
+    edited_content = await _run_gemini(edit_prompt, ws["level"], model_name=TIER_CONFIG["premium"]["model"], is_free_tier=False)
+    
+    # Deduct credit
+    await db.users.update_one({"user_id": user.user_id}, {"$inc": {"ai_edit_credits": -1}})
+    
     new_ws_id = f"ws_{uuid.uuid4().hex[:12]}"
     new_doc = {
         "worksheet_id": new_ws_id,
@@ -608,42 +670,23 @@ Rules:
     await db.worksheets.insert_one(new_doc)
     return {k: v for k, v in new_doc.items() if k != "_id"}
 
-# --- HUMAN EDITOR (BASIC+ PAYWALL) ---
-@api_router.post("/worksheets/human-edit-request")
-async def request_human_edit(payload: HumanEditRequest, user: User = Depends(require_tier("basic"))):
-    user = await refresh_user_credits(user)
-    if user.human_editor_credits < 1:
-        raise HTTPException(status_code=402, detail="No human editor credits remaining. Resets monthly.")
-    ws = await db.worksheets.find_one({"worksheet_id": payload.worksheet_id, "user_id": user.user_id})
-    if not ws:
-        raise HTTPException(status_code=404, detail="Worksheet not found")
-    await db.users.update_one({"user_id": user.user_id}, {"$inc": {"human_editor_credits": -1}})
-    review_doc = {
-        "review_id": f"rev_{uuid.uuid4().hex[:8]}",
-        "worksheet_id": payload.worksheet_id,
-        "user_id": user.user_id,
-        "user_email": user.email,
-        "worksheet_title": ws["title"],
-        "teacher_notes": payload.notes,
-        "status": "pending",
-        "assigned_to": None,
-        "result": None,
-        "created_at": _now().isoformat(),
-        "completed_at": None
-    }
-    await db.human_reviews.insert_one(review_doc)
-    return {
-        "status": "submitted",
-        "review_id": review_doc["review_id"],
-        "message": "Your worksheet is in the review queue. Expect feedback within 24 hours."
-    }
-
-@api_router.get("/worksheets/human-edit-status/{review_id}")
-async def human_edit_status(review_id: str, user: User = Depends(require_user)):
-    review = await db.human_reviews.find_one({"review_id": review_id, "user_id": user.user_id}, {"_id": 0})
-    if not review:
-        raise HTTPException(status_code=404, detail="Review not found")
-    return review
+# --- REWARDED ADS (Works for both worksheet credits AND AI edit credits) ---
+@api_router.post("/usage/grant-rewarded")
+async def grant_ad_reward(payload: RewardedAdRequest, user: User = Depends(require_user)):
+    reward_type = payload.reward_type
+    
+    if reward_type == "ai_edit":
+        # Only premium users can earn AI edit credits via ads
+        if user.subscription_tier != "premium":
+            raise HTTPException(status_code=403, detail="AI edit rewards require Premium.")
+        bonus = 1 if payload.tier <= 15 else 2 if payload.tier <= 30 else 3
+        await db.users.update_one({"user_id": user.user_id}, {"$inc": {"ai_edit_credits": bonus}})
+        return {"status": "reward_granted", "amount": bonus, "type": "ai_edit_credit"}
+    else:
+        # Standard worksheet credit
+        bonus = 1 if payload.tier <= 15 else 2
+        await db.users.update_one({"user_id": user.user_id}, {"$inc": {"bonus_credits": bonus}})
+        return {"status": "reward_granted", "amount": bonus, "type": "worksheet_credit"}
 
 # --- PUBLIC LIBRARY ---
 @api_router.get("/library/feed")
@@ -709,13 +752,7 @@ async def clone_worksheet(worksheet_id: str, user: User = Depends(require_user))
     await db.worksheets.insert_one(new_doc)
     return {"worksheet_id": new_id, "status": "cloned"}
 
-# --- MONETIZATION ---
-@api_router.post("/usage/grant-rewarded")
-async def grant_ad_reward(payload: RewardedAdRequest, user: User = Depends(require_user)):
-    bonus = 1 if payload.tier <= 15 else 2
-    await db.users.update_one({"user_id": user.user_id}, {"$inc": {"bonus_credits": bonus}})
-    return {"status": "reward_granted", "amount": bonus}
-
+# --- MONETIZATION & TIER MANAGEMENT ---
 @api_router.get("/billing/tier")
 async def get_tier(user: User = Depends(require_user)):
     user = await refresh_user_credits(user)
@@ -725,10 +762,10 @@ async def get_tier(user: User = Depends(require_user)):
         "is_premium": user.is_premium,
         "monthly_quota": config["monthly_quota"],
         "used_this_month": user.free_used,
-        "remaining_this_month": max(0, config["monthly_quota"] + user.bonus_credits - user.free_used),
-        "human_editor_credits": user.human_editor_credits,
-        "has_ai_editor": config["has_ai_editor"],
+        "remaining_this_month": max(0, config["monthly_quota"] + user.bonus_credits - user.free_used) if user.subscription_tier != "free" else "unlimited",
+        "ai_edit_credits": user.ai_edit_credits,
         "has_word_editor": config["has_word_editor"],
+        "has_ai_editor": config["has_ai_editor"],
         "has_ads": config["has_ads"],
         "model": config["model"],
         "reset_at": user.monthly_reset_at.isoformat() if user.monthly_reset_at else None
@@ -755,13 +792,14 @@ async def paypal_capture(payload: PayPalCaptureRequest, user: User = Depends(req
                 "subscription_tier": tier,
                 "is_premium": True,
                 "free_used": 0,
-                "human_editor_credits": TIER_CONFIG[tier]["human_editor_credits_per_month"],
+                "ai_edit_credits": TIER_CONFIG[tier]["ai_edits_per_month"],
                 "monthly_reset_at": (now + timedelta(days=30)).isoformat(),
                 "paypal_subscription_id": payload.order_id
             }}
         )
         return {"status": "success", "tier": tier}
-    else:
+    elif product_type == "ai_edit_pack":
+        # One-time purchase: 10 AI edits for £5
         try:
             order_data = await verify_paypal_order(payload.order_id)
         except Exception as e:
@@ -770,11 +808,10 @@ async def paypal_capture(payload: PayPalCaptureRequest, user: User = Depends(req
         status = order_data.get("status", "")
         if status not in ("COMPLETED", "APPROVED"):
             raise HTTPException(status_code=400, detail=f"PayPal order not completed. Status: {status}")
-        if product_type == "human_editor_credit":
-            await db.users.update_one({"user_id": user.user_id}, {"$inc": {"human_editor_credits": 1}})
-            return {"status": "success", "credits_added": 1}
-        else:
-            raise HTTPException(status_code=400, detail="Unknown product type")
+        await db.users.update_one({"user_id": user.user_id}, {"$inc": {"ai_edit_credits": 10}})
+        return {"status": "success", "credits_added": 10}
+    else:
+        raise HTTPException(status_code=400, detail="Unknown product type")
 
 @api_router.post("/billing/mark-basic")
 async def mark_basic(user: User = Depends(require_user)):
@@ -785,7 +822,7 @@ async def mark_basic(user: User = Depends(require_user)):
             "subscription_tier": "basic",
             "is_premium": True,
             "free_used": 0,
-            "human_editor_credits": TIER_CONFIG["basic"]["human_editor_credits_per_month"],
+            "ai_edit_credits": TIER_CONFIG["basic"]["ai_edits_per_month"],
             "monthly_reset_at": (now + timedelta(days=30)).isoformat()
         }}
     )
@@ -800,7 +837,7 @@ async def mark_premium(user: User = Depends(require_user)):
             "subscription_tier": "premium",
             "is_premium": True,
             "free_used": 0,
-            "human_editor_credits": TIER_CONFIG["premium"]["human_editor_credits_per_month"],
+            "ai_edit_credits": TIER_CONFIG["premium"]["ai_edits_per_month"],
             "monthly_reset_at": (now + timedelta(days=30)).isoformat()
         }}
     )
@@ -810,17 +847,9 @@ async def mark_premium(user: User = Depends(require_user)):
 async def downgrade(user: User = Depends(require_user)):
     await db.users.update_one(
         {"user_id": user.user_id},
-        {"$set": {"subscription_tier": "free", "is_premium": False, "paypal_subscription_id": None}}
+        {"$set": {"subscription_tier": "free", "is_premium": False, "paypal_subscription_id": None, "ai_edit_credits": 0}}
     )
     return {"status": "downgraded_to_free"}
-
-@api_router.post("/billing/cancel")
-async def cancel_subscription(user: User = Depends(require_user)):
-    await db.users.update_one(
-        {"user_id": user.user_id},
-        {"$set": {"subscription_tier": "free", "is_premium": False, "paypal_subscription_id": None}}
-    )
-    return {"status": "cancelled"}
 
 # --- PAYPAL WEBHOOKS ---
 @api_router.post("/webhooks/paypal")
@@ -845,7 +874,7 @@ async def paypal_webhook(request: Request):
                         "subscription_tier": tier,
                         "is_premium": True,
                         "free_used": 0,
-                        "human_editor_credits": TIER_CONFIG[tier]["human_editor_credits_per_month"],
+                        "ai_edit_credits": TIER_CONFIG[tier]["ai_edits_per_month"],
                         "monthly_reset_at": (_now() + timedelta(days=30)).isoformat(),
                         "paypal_subscription_id": sub_id
                     }}
@@ -860,7 +889,7 @@ async def paypal_webhook(request: Request):
             if custom_id and custom_id.startswith("user_"):
                 await db.users.update_one(
                     {"user_id": custom_id},
-                    {"$set": {"subscription_tier": "free", "is_premium": False, "paypal_subscription_id": None}}
+                    {"$set": {"subscription_tier": "free", "is_premium": False, "paypal_subscription_id": None, "ai_edit_credits": 0}}
                 )
                 logger.info(f"PayPal webhook: cancelled for {custom_id}")
     except Exception as e:
@@ -875,7 +904,7 @@ app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_credentials
 
 @app.get("/")
 async def root():
-    return {"app": "SmartGiaoAn API", "status": "operational", "version": "3.0.0"}
+    return {"app": "SmartGiaoAn API", "status": "operational", "version": "3.1.0"}
 
 @app.get("/health")
 async def health():
