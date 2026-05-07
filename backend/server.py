@@ -64,9 +64,9 @@ GEMINI_MODEL_PREMIUM = "gemini-2.5-pro"
 # Fallback chain: if primary 404s, each model is tried in order.
 # This means a future Google deprecation can never fully kill the app.
 _GEMINI_FALLBACKS = {
-    GEMINI_MODEL_FREE:    ["gemini-2.5-flash",   "gemini-2.0-flash"],
-    GEMINI_MODEL_BASIC:   ["gemini-2.5-pro",     "gemini-2.0-flash"],
-    GEMINI_MODEL_PREMIUM: ["gemini-2.5-flash",   "gemini-2.0-flash"],
+    GEMINI_MODEL_FREE:    ["gemini-2.5-flash", "gemini-2.5-pro"],
+    GEMINI_MODEL_BASIC:   ["gemini-2.5-pro", "gemini-2.5-flash-lite"],
+    GEMINI_MODEL_PREMIUM: ["gemini-2.5-flash", "gemini-2.5-flash-lite"],
 }
 
 TIER_CONFIG = {
