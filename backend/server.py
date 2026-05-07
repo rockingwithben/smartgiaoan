@@ -44,20 +44,20 @@ CORS_ORIGINS = [o.strip() for o in _cors_env.split(',') if o.strip()] or [
 ]
 
 # ============================================================
-# TIER CONFIGURATION
+# TIER CONFIGURATION — 2026 MODEL LINEUP (ALL RETIRED MODELS REMOVED)
 # ============================================================
 TIER_CONFIG = {
     "free": {
-        "model": "gemini-1.5-flash",
-        "monthly_quota": 999999,  # Unlimited — ads are the throttle
+        "model": "gemini-2.5-flash-lite-preview-06-17",  # Cheapest, fastest
+        "monthly_quota": 999999,
         "ai_edits_per_month": 0,
         "has_word_editor": True,
         "has_ai_editor": False,
         "has_ads": True,
-        "ad_frequency_base": 0.3,  # 30% chance of ad after worksheet
+        "ad_frequency_base": 0.3,
     },
     "basic": {
-        "model": "gemini-1.5-flash",
+        "model": "gemini-2.5-flash-preview-06-17",  # Fast, good quality
         "monthly_quota": 50,
         "ai_edits_per_month": 0,
         "has_word_editor": True,
@@ -65,7 +65,7 @@ TIER_CONFIG = {
         "has_ads": False,
     },
     "premium": {
-        "model": "gemini-1.5-pro-latest",
+        "model": "gemini-2.5-pro-preview-06-17",  # Best reasoning
         "monthly_quota": 999999,
         "ai_edits_per_month": 50,
         "has_word_editor": True,
@@ -99,7 +99,7 @@ async def lifespan(app: FastAPI):
 # ============================================================
 # APP SETUP
 # ============================================================
-app = FastAPI(title="SmartGiaoAn API", version="3.1.0", lifespan=lifespan)
+app = FastAPI(title="SmartGiaoAn API", version="3.2.1", lifespan=lifespan)
 api_router = APIRouter(prefix="/api")
 
 def hash_password(password: str) -> str:
@@ -142,6 +142,13 @@ class WorksheetRequest(BaseModel):
     num_questions: int = 24
     grammar_focus: Optional[str] = None
 
+class LessonPlanRequest(BaseModel):
+    level: str
+    cefr: str
+    topic: str
+    duration_weeks: int = 4
+    lessons_per_week: int = 4
+
 class SessionExchangeRequest(BaseModel):
     session_id: str
 
@@ -154,7 +161,7 @@ class EmailAuthRequest(BaseModel):
 
 class RewardedAdRequest(BaseModel):
     tier: int
-    reward_type: str = "worksheet"  # "worksheet" or "ai_edit"
+    reward_type: str = "worksheet"
 
 class AIEditRequest(BaseModel):
     worksheet_id: str
@@ -270,7 +277,7 @@ def require_tier(min_tier: str):
     return _require_tier
 
 # ============================================================
-# PAYPAL HELPERS (Added safety timeouts)
+# PAYPAL HELPERS
 # ============================================================
 async def _paypal_access_token() -> str:
     if not PAYPAL_CLIENT_ID or not PAYPAL_CLIENT_SECRET:
@@ -306,7 +313,7 @@ async def verify_paypal_subscription(subscription_id: str) -> dict:
         return r.json()
 
 # ============================================================
-# GEMINI ENGINE — UNIFIED CONFIGURATION
+# GEMINI ENGINE — SINGLE CONFIG, CORRECT MODEL NAMES
 # ============================================================
 adc_json_raw = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS_JSON', '').strip()
 api_key = os.environ.get('GEMINI_API_KEY', '').strip()
@@ -321,19 +328,19 @@ if adc_json_raw:
         os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = adc_path
         
         import google.auth
-        paid_credentials, project_id = google.auth.default()
-        genai.configure(credentials=paid_credentials)
-        logger.info(f"AI Engine: Using Enterprise ADC (project: {project_id}).")
+        credentials, project_id = google.auth.default()
+        genai.configure(credentials=credentials)
+        logger.info(f"AI Engine: Enterprise ADC (project: {project_id}).")
     except Exception as e:
-        logger.error(f"ADC setup failed: {e}. Falling back to API Key if available.")
+        logger.error(f"ADC failed: {e}")
         if api_key:
             genai.configure(api_key=api_key)
-            logger.info("AI Engine: Fallback to standard API key.")
+            logger.info("AI Engine: Fallback to API key.")
 elif api_key:
     genai.configure(api_key=api_key)
-    logger.info("AI Engine: Using standard API key.")
+    logger.info("AI Engine: Using API key.")
 else:
-    logger.warning("CRITICAL: NO GOOGLE CREDENTIALS FOUND! AI Engine will fail.")
+    logger.warning("CRITICAL: NO GOOGLE CREDENTIALS! AI will fail.")
 
 def build_system_prompt(level: str) -> str:
     base_prompt = """You are a senior Cambridge ESOL examiner and ESL curriculum designer specialising in Vietnamese learners.
@@ -353,11 +360,9 @@ Rules:
         base_prompt += "\n- SECONDARY/IELTS OVERRIDE: Rigorous academic content, complex reading comprehension, and full answer keys."
     return base_prompt
 
-async def _run_gemini(prompt: str, level: str, model_name: str = "gemini-1.5-pro-latest", is_free_tier: bool = False) -> dict:
+async def _run_gemini(prompt: str, level: str, model_name: str) -> dict:
     dynamic_instruction = build_system_prompt(level)
     
-    # We use the globally configured genai client for all requests. 
-    # Gemini 1.5 Flash handles free-tier routing efficiently without needing a hacky secondary module load.
     model = genai.GenerativeModel(
         model_name=model_name,
         system_instruction=dynamic_instruction,
@@ -374,7 +379,7 @@ async def _run_gemini(prompt: str, level: str, model_name: str = "gemini-1.5-pro
             if not result.candidates:
                 feedback = result.prompt_feedback if hasattr(result, 'prompt_feedback') else None
                 block_reason = feedback.block_reason if feedback and hasattr(feedback, 'block_reason') else "Unknown"
-                last_error = f"Content blocked by safety filters. Reason: {block_reason}"
+                last_error = f"Content blocked. Reason: {block_reason}"
                 logger.warning(last_error)
                 await asyncio.sleep(1)
                 continue
@@ -386,19 +391,16 @@ async def _run_gemini(prompt: str, level: str, model_name: str = "gemini-1.5-pro
                 await asyncio.sleep(1)
                 continue
             
-            # Robust JSON block extraction
-            if raw_text.startswith("```"):
-                raw_text = raw_text.strip("` \n")
-                if raw_text.lower().startswith("json"):
-                    raw_text = raw_text[4:].strip()
-            
+            raw_text = re.sub(r'^```(?:json)?\s*', '', raw_text, flags=re.IGNORECASE)
+            raw_text = re.sub(r'\s*```$', '', raw_text)
+            raw_text = raw_text.strip()
             return json.loads(raw_text)
             
         except asyncio.TimeoutError:
-            last_error = "AI generation timed out after 60 seconds"
+            last_error = "AI generation timed out"
             logger.error(last_error)
         except json.JSONDecodeError as je:
-            last_error = f"JSON Parsing Error: {je} \nText Received: {raw_text[:100]}..."
+            last_error = f"JSON Parsing Error: {je}"
             logger.error(last_error)
         except Exception as e:
             last_error = f"Google API Error: {str(e)}"
@@ -452,7 +454,7 @@ async def auth_session_exchange(payload: SessionExchangeRequest, response: Respo
         raise HTTPException(status_code=400, detail="Missing session ID")
     try:
         async with httpx.AsyncClient(timeout=30.0, follow_redirects=True, trust_env=False) as hx:
-            url = f"[https://auth.emergentagent.com/api/session/](https://auth.emergentagent.com/api/session/){sid}"
+            url = f"https://auth.emergentagent.com/api/session/{sid}"
             r = await hx.get(url, headers={"Accept": "application/json", "User-Agent": "SmartGiaoAn-Backend/1.0"})
             if r.status_code == 404:
                 raise HTTPException(status_code=401, detail="Google Session ID was already consumed. Try clicking Google Login again.")
@@ -537,7 +539,6 @@ async def generate_ws(payload: WorksheetRequest, user: User = Depends(require_us
         usage_factor = min(user.free_used / 10, 1.0)
         ad_probability = base_freq + (usage_factor * 0.4)
         should_show_ad = random.random() < ad_probability
-        
         if should_show_ad:
             ad_duration = random.choice([15, 30, 60])
     
@@ -548,8 +549,7 @@ async def generate_ws(payload: WorksheetRequest, user: User = Depends(require_us
     You MUST return the content using structured keys appropriate for an ESL worksheet.
     """
     
-    is_free = user.subscription_tier == "free"
-    ws_data = await _run_gemini(prompt, payload.level, model_name=config["model"], is_free_tier=is_free)
+    ws_data = await _run_gemini(prompt, payload.level, model_name=config["model"])
 
     ws_id = f"ws_{uuid.uuid4().hex[:12]}"
     ws_doc = {
@@ -602,7 +602,6 @@ async def update_worksheet(worksheet_id: str, payload: UpdateWorksheetRequest, u
 @api_router.post("/worksheets/ai-edit")
 async def ai_edit_worksheet(payload: AIEditRequest, user: User = Depends(require_tier("premium"))):
     user = await refresh_user_credits(user)
-    
     if user.ai_edit_credits < 1:
         raise HTTPException(status_code=402, detail="No AI edit credits. Buy more or watch an ad.")
     
@@ -622,7 +621,7 @@ Rules:
 - Only modify what was requested.
 - OUTPUT MUST BE RAW JSON ONLY."""
     
-    edited_content = await _run_gemini(edit_prompt, ws["level"], model_name=TIER_CONFIG["premium"]["model"], is_free_tier=False)
+    edited_content = await _run_gemini(edit_prompt, ws["level"], model_name=TIER_CONFIG["premium"]["model"])
     
     await db.users.update_one({"user_id": user.user_id}, {"$inc": {"ai_edit_credits": -1}})
     
@@ -644,11 +643,107 @@ Rules:
     await db.worksheets.insert_one(new_doc)
     return {k: v for k, v in new_doc.items() if k != "_id"}
 
+# --- SMART LESSON PLANNER (PREMIUM ONLY) ---
+@api_router.post("/lesson-plans/generate")
+async def generate_lesson_plan(payload: LessonPlanRequest, user: User = Depends(require_tier("premium"))):
+    user = await refresh_user_credits(user)
+    config = TIER_CONFIG["premium"]
+    
+    total_cost = payload.duration_weeks * payload.lessons_per_week
+    if user.free_used + total_cost > config["monthly_quota"] + user.bonus_credits:
+        raise HTTPException(status_code=402, detail=f"Need {total_cost} worksheet credits. Upgrade or generate fewer weeks.")
+    
+    prompt = f"""You are a senior Cambridge ESOL curriculum designer creating a complete unit plan for Vietnamese learners.
+
+Create a {payload.duration_weeks}-week unit plan for {payload.level} (CEFR {payload.cefr}) students.
+Topic: '{payload.topic}'
+Lessons per week: {payload.lessons_per_week}
+
+For EACH lesson, provide:
+- lesson_title
+- lesson_type (vocabulary/grammar/reading/writing/listening/speaking/assessment/project)
+- duration_minutes
+- learning_objectives (array)
+- worksheet_content (full structured JSON for the worksheet)
+- homework_task
+- materials_needed
+
+Also include:
+- unit_title
+- unit_overview
+- assessment_criteria
+- suggested_extensions_for_advanced_learners
+- suggested_support_for_weak_learners
+
+Rules:
+- Use Vietnamese names: Minh, Lan, Huy, Thao, Nam, Linh, Duc, Mai.
+- Use Vietnamese locations and culture.
+- OUTPUT MUST BE RAW, VALID JSON ONLY.
+- Structure: {{"unit_title": "...", "weeks": [{{"week_number": 1, "lessons": [...]}}]}}"""
+    
+    plan_data = await _run_gemini(prompt, payload.level, model_name=config["model"])
+    
+    plan_id = f"lp_{uuid.uuid4().hex[:12]}"
+    plan_doc = {
+        "plan_id": plan_id,
+        "user_id": user.user_id,
+        "unit_title": plan_data.get("unit_title", f"{payload.topic} Unit"),
+        "level": payload.level,
+        "cefr": payload.cefr,
+        "topic": payload.topic,
+        "duration_weeks": payload.duration_weeks,
+        "content": plan_data,
+        "created_at": _now().isoformat()
+    }
+    await db.lesson_plans.insert_one(plan_doc)
+    
+    worksheet_count = 0
+    if "weeks" in plan_data:
+        for week in plan_data["weeks"]:
+            for lesson in week.get("lessons", []):
+                if "worksheet_content" in lesson:
+                    ws_id = f"ws_{uuid.uuid4().hex[:12]}"
+                    ws_doc = {
+                        "worksheet_id": ws_id,
+                        "user_id": user.user_id,
+                        "title": lesson.get("lesson_title", "Untitled"),
+                        "level": payload.level,
+                        "cefr": payload.cefr,
+                        "skill": lesson.get("lesson_type", "Mixed"),
+                        "topic": payload.topic,
+                        "content": lesson["worksheet_content"],
+                        "is_public": False,
+                        "parent_plan": plan_id,
+                        "created_at": _now().isoformat()
+                    }
+                    await db.worksheets.insert_one(ws_doc)
+                    worksheet_count += 1
+    
+    await db.users.update_one({"user_id": user.user_id}, {"$inc": {"free_used": total_cost}})
+    
+    return {
+        "plan_id": plan_id,
+        "unit_title": plan_doc["unit_title"],
+        "worksheets_generated": worksheet_count,
+        "total_lessons": total_cost,
+        "content": plan_data
+    }
+
+@api_router.get("/lesson-plans")
+async def list_lesson_plans(user: User = Depends(require_user)):
+    return await db.lesson_plans.find({"user_id": user.user_id}, {"_id": 0}).sort("created_at", -1).to_list(50)
+
+@api_router.get("/lesson-plans/{plan_id}")
+async def get_lesson_plan(plan_id: str, user: User = Depends(require_user)):
+    plan = await db.lesson_plans.find_one({"plan_id": plan_id, "user_id": user.user_id}, {"_id": 0})
+    if not plan:
+        raise HTTPException(status_code=404, detail="Lesson plan not found")
+    return plan
+
 # --- REWARDED ADS ---
 @api_router.post("/usage/grant-rewarded")
 async def grant_ad_reward(payload: RewardedAdRequest, user: User = Depends(require_user)):
     reward_type = payload.reward_type
-    
     if reward_type == "ai_edit":
         if user.subscription_tier != "premium":
             raise HTTPException(status_code=403, detail="AI edit rewards require Premium.")
@@ -875,7 +970,7 @@ app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_credentials
 
 @app.get("/")
 async def root():
-    return {"app": "SmartGiaoAn API", "status": "operational", "version": "3.1.0"}
+    return {"app": "SmartGiaoAn API", "status": "operational", "version": "3.2.1"}
 
 @app.get("/health")
 async def health():
