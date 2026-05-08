@@ -573,7 +573,7 @@ function QuestionItem({ question, number, isKindergarten, isIELTS, exerciseType 
             const optLabel = typeof opt === 'object' && opt.label ? opt.label : String.fromCharCode(65 + oIdx);
             return (
               <div key={oIdx} className="flex items-start group">
-                <div className="w-5 h-5 border-2 border-gray-400 rounded-full mr-3 mt-1 flex-shrink-0 group-hover:border-black transition"></div>
+                <div className="w-5 h-5 border-2 border-gray-400 rounded-full mr-3 mt-1 flex-shrink-0 group-hover:border-black transition print:border-black"></div>
                 <span className="text-gray-800">
                   <span className="font-bold mr-1">{optLabel}.</span>
                   {optText}
@@ -586,7 +586,7 @@ function QuestionItem({ question, number, isKindergarten, isIELTS, exerciseType 
       
       {/* Open response (fill in blank / short answer) */}
       {!isTrueFalse && !isMultipleChoice && (
-        <div className="mt-4 border-b-2 border-gray-300 w-full h-8"></div>
+        <div className="mt-4 border-b-2 border-gray-300 w-full h-8 print:border-black"></div>
       )}
     </div>
   );
