@@ -14,6 +14,9 @@ import secrets
 import re
 import base64
 import random
+import io
+from docx import Document
+from docx.shared import Pt, Inches
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, Any, Dict, List
@@ -698,6 +701,137 @@ async def get_worksheet(worksheet_id: str, user: User = Depends(require_user)):
     if ws.get("user_id") != user.user_id and not ws.get("is_public", False):
         raise HTTPException(status_code=403, detail="This worksheet is private")
     return ws
+
+@api_router.get("/worksheets/{worksheet_id}/export-docx")
+async def export_worksheet_docx(worksheet_id: str, user: User = Depends(require_user)):
+    ws = await db.worksheets.find_one({"worksheet_id": worksheet_id}, {"_id": 0})
+    if not ws:
+        raise HTTPException(status_code=404, detail="Worksheet not found")
+    if ws.get("user_id") != user.user_id and not ws.get("is_public", False):
+        raise HTTPException(status_code=403, detail="This worksheet is private")
+
+    content = ws.get("content", {})
+    title = content.get("title", ws.get("title", "Untitled Worksheet"))
+    
+    document = Document()
+    
+    style = document.styles['Normal']
+    font = style.font
+    font.name = 'Arial'
+    font.size = Pt(11)
+    
+    heading = document.add_heading(title, 0)
+    heading.alignment = 1
+    
+    if content.get("subtitle"):
+        sub = document.add_paragraph(content["subtitle"])
+        sub.alignment = 1
+        
+    document.add_paragraph("Name: ____________________\t\tDate: __________\t\tScore: _____/100")
+    
+    def add_question(doc, q, num):
+        q_text = q if isinstance(q, str) else q.get("question", q.get("sentence", q.get("prompt", q.get("text", str(q)))))
+        doc.add_paragraph(f"{num}. {q_text}")
+        
+        options = []
+        if isinstance(q, dict):
+            options = q.get("options", q.get("choices", []))
+            
+        if options:
+            for opt_idx, opt in enumerate(options):
+                opt_text = opt if isinstance(opt, str) else opt.get("text", opt.get("label", str(opt)))
+                opt_label = opt.get("label", chr(65 + opt_idx)) if isinstance(opt, dict) and opt.get("label") else chr(65 + opt_idx)
+                doc.add_paragraph(f"    ( ) {opt_label}. {opt_text}")
+        else:
+            doc.add_paragraph("\n    __________________________________________________\n")
+
+    passage = content.get("reading_passage") or content.get("passage")
+    if passage:
+        document.add_heading("Reading Passage", level=1)
+        if isinstance(passage, dict):
+            if passage.get("title"):
+                document.add_heading(passage["title"], level=2)
+            document.add_paragraph(passage.get("text", ""))
+        else:
+            document.add_paragraph(str(passage))
+            
+    vocab = content.get("vocabulary")
+    if vocab:
+        document.add_heading("Vocabulary", level=1)
+        glossary = vocab.get("glossary", [])
+        for item in glossary:
+            document.add_paragraph(f"{item.get('word', '')} — {item.get('definition', '')}")
+        
+        for ex_idx, ex in enumerate(vocab.get("exercises", [])):
+            instructions = ex.get("instructions", ex.get("prompt", f"Exercise {ex_idx+1}"))
+            document.add_heading(instructions, level=2)
+            for i, q in enumerate(ex.get("items", ex.get("questions", []))):
+                add_question(document, q, i+1)
+
+    comp = content.get("comprehension")
+    if comp and comp.get("exercises"):
+        document.add_heading("Comprehension", level=1)
+        for ex_idx, ex in enumerate(comp.get("exercises", [])):
+            instructions = ex.get("instructions", ex.get("prompt", f"Exercise {ex_idx+1}"))
+            document.add_heading(instructions, level=2)
+            for i, q in enumerate(ex.get("items", ex.get("questions", []))):
+                add_question(document, q, i+1)
+
+    grammar = content.get("grammar")
+    if grammar:
+        focus = grammar.get('focus', '')
+        document.add_heading(f"Grammar{': ' + focus if focus else ''}", level=1)
+        if grammar.get("explanation"):
+            document.add_paragraph(grammar["explanation"])
+            
+        for ex_idx, ex in enumerate(grammar.get("exercises", [])):
+            instructions = ex.get("instructions", ex.get("prompt", f"Exercise {ex_idx+1}"))
+            document.add_heading(instructions, level=2)
+            for i, q in enumerate(ex.get("items", ex.get("questions", []))):
+                add_question(document, q, i+1)
+                
+    exercises = content.get("exercises")
+    if exercises:
+        for ex_idx, ex in enumerate(exercises):
+            instructions = ex.get("instructions", ex.get("prompt", f"Exercise {ex_idx+1}"))
+            document.add_heading(instructions, level=1)
+            for i, q in enumerate(ex.get("items", ex.get("questions", []))):
+                add_question(document, q, i+1)
+
+    sections = content.get("sections")
+    if sections:
+        for sec_idx, sec in enumerate(sections):
+            stitle = sec.get("section_title", f"Section {sec_idx+1}")
+            document.add_heading(stitle, level=1)
+            if sec.get("instructions"):
+                document.add_paragraph(sec["instructions"])
+            for q in sec.get("questions", []):
+                num = q.get("number", "?")
+                add_question(document, q, num)
+                
+    writing = content.get("writing") or content.get("writing_task")
+    if writing:
+        document.add_heading("Writing Task", level=1)
+        if isinstance(writing, dict):
+            task = writing.get("task") or writing.get("prompt")
+            if task:
+                document.add_paragraph(task)
+            document.add_paragraph("\n")
+            for _ in range(8):
+                document.add_paragraph("_________________________________________________________________________________________")
+
+    file_stream = io.BytesIO()
+    document.save(file_stream)
+    file_stream.seek(0)
+    
+    headers = {
+        'Content-Disposition': f'attachment; filename="{title}.docx"'
+    }
+    return Response(
+        content=file_stream.read(),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers=headers
+    )
 
 @api_router.patch("/worksheets/{worksheet_id}")
 async def update_worksheet(worksheet_id: str, payload: UpdateWorksheetRequest, user: User = Depends(require_user)):

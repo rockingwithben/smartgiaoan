@@ -11,6 +11,7 @@ export default function WorksheetView() {
   const [copied, setCopied] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
   const [showAnswerKey, setShowAnswerKey] = useState(false);
+  const [downloadingDocx, setDownloadingDocx] = useState(false);
 
   useEffect(() => {
     const fetchWorksheet = async () => {
@@ -41,6 +42,25 @@ export default function WorksheetView() {
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleDownloadDocx = async () => {
+    try {
+      setDownloadingDocx(true);
+      const response = await http.get(`/worksheets/${id}/export-docx`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `${worksheet.title || 'Worksheet'}.docx`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+    } catch (err) {
+      console.error('Error downloading docx:', err);
+      alert('Failed to download Word document.');
+    } finally {
+      setDownloadingDocx(false);
+    }
   };
 
   if (loading) return (
@@ -142,6 +162,14 @@ export default function WorksheetView() {
             >
               {copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
               {copied ? 'Copied!' : 'Copy Link'}
+            </button>
+            <button
+              onClick={handleDownloadDocx}
+              disabled={downloadingDocx}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold border border-blue-600 text-blue-600 hover:bg-blue-50 transition disabled:opacity-50"
+            >
+              <BookOpen className="w-4 h-4" />
+              {downloadingDocx ? 'Generating...' : 'Word Doc'}
             </button>
             <button
               onClick={handlePrint}
