@@ -20,6 +20,7 @@ export default function WorksheetView() {
   const [isEditing, setIsEditing] = useState(false);
   const [editCommand, setEditCommand] = useState('');
   const [showPaywall, setShowPaywall] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
 
   useEffect(() => {
     const fetchWorksheet = async () => {
@@ -41,6 +42,12 @@ export default function WorksheetView() {
     };
     fetchWorksheet();
   }, [id]);
+
+  useEffect(() => {
+    return () => {
+      window.speechSynthesis.cancel();
+    };
+  }, []);
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(window.location.href);
@@ -129,8 +136,6 @@ export default function WorksheetView() {
   const hasPassage = content.reading_passage || content.passage;
   const hasListeningScript = content.listening_script;
 
-  const [isPlaying, setIsPlaying] = useState(false);
-
   const handleTTS = () => {
     if (isPlaying) {
       window.speechSynthesis.cancel();
@@ -146,13 +151,6 @@ export default function WorksheetView() {
       setIsPlaying(true);
     }
   };
-
-  // Stop audio if unmounted
-  useEffect(() => {
-    return () => {
-      window.speechSynthesis.cancel();
-    };
-  }, []);
 
   // Collect all answers for the answer key
   const allAnswers = [];
