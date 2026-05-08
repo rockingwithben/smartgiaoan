@@ -832,7 +832,14 @@ async def grant_ad_reward(payload: RewardedAdRequest, user: User = Depends(requi
 # API ROUTES — PUBLIC LIBRARY
 # ============================================================
 @api_router.get("/library/feed")
-async def public_library_feed(level: Optional[str] = None, skill: Optional[str] = None, search: Optional[str] = None):
+async def public_library_feed(
+    response: Response,
+    level: Optional[str] = None,
+    skill: Optional[str] = None,
+    search: Optional[str] = None
+):
+    response.headers["Cache-Control"] = "public, max-age=300, stale-while-revalidate=600"
+    response.headers["X-Robots-Tag"] = "index, follow"
     query: dict = {"is_public": True}
     if level  and level  != "All": query["level"] = level
     if skill  and skill  != "All": query["skill"] = skill

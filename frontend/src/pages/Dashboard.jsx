@@ -33,6 +33,8 @@ export default function Dashboard() {
   
   // UX Optimization (Sorting & Filtering)
   const [filterLevel, setFilterLevel] = useState('All');
+  const [filterSkill, setFilterSkill] = useState('All');
+  const [filterDateRange, setFilterDateRange] = useState('All');
   const [sortOrder, setSortOrder] = useState('desc');
   
   // Mobile step wizard
@@ -162,8 +164,23 @@ export default function Dashboard() {
   };
 
   // Process sorting and filtering
+  const dateRangeDays = {
+    All: null,
+    'Last 7 days': 7,
+    'Last 30 days': 30,
+    'Last 90 days': 90,
+  };
+
   const processedWorksheets = worksheets
     .filter(ws => filterLevel === 'All' || ws.level === filterLevel)
+    .filter(ws => filterSkill === 'All' || ws.skill === filterSkill)
+    .filter(ws => {
+      const days = dateRangeDays[filterDateRange];
+      if (!days) return true;
+      const created = new Date(ws.created_at).getTime();
+      const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+      return created >= cutoff;
+    })
     .sort((a, b) => {
       const dateA = new Date(a.created_at).getTime();
       const dateB = new Date(b.created_at).getTime();
@@ -358,7 +375,7 @@ export default function Dashboard() {
                 <FileText size={18} /> My Worksheets ({processedWorksheets.length})
               </h2>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <div className="relative flex items-center border border-gray-200 rounded-lg bg-white px-3 py-2.5 shadow-sm min-h-[44px]">
                   <Filter size={14} className="text-gray-400 mr-2" />
                   <select
@@ -368,6 +385,30 @@ export default function Dashboard() {
                   >
                     <option value="All">All Levels</option>
                     {LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
+                  </select>
+                </div>
+                <div className="relative flex items-center border border-gray-200 rounded-lg bg-white px-3 py-2.5 shadow-sm min-h-[44px]">
+                  <Filter size={14} className="text-gray-400 mr-2" />
+                  <select
+                    value={filterSkill}
+                    onChange={(e) => setFilterSkill(e.target.value)}
+                    className="bg-transparent text-base text-gray-700 outline-none cursor-pointer touch-manipulation"
+                  >
+                    <option value="All">All Skills</option>
+                    {SKILLS.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div className="relative flex items-center border border-gray-200 rounded-lg bg-white px-3 py-2.5 shadow-sm min-h-[44px]">
+                  <Filter size={14} className="text-gray-400 mr-2" />
+                  <select
+                    value={filterDateRange}
+                    onChange={(e) => setFilterDateRange(e.target.value)}
+                    className="bg-transparent text-base text-gray-700 outline-none cursor-pointer touch-manipulation"
+                  >
+                    <option value="All">All Dates</option>
+                    <option value="Last 7 days">Last 7 days</option>
+                    <option value="Last 30 days">Last 30 days</option>
+                    <option value="Last 90 days">Last 90 days</option>
                   </select>
                 </div>
                 <button
