@@ -6,11 +6,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#000000" />
     
-    <title>SmartGiaoAn | ESL Worksheets Vietnam · Cambridge CEFR Worksheets</title>
+    <title>SmartGiaoAn | ESL Worksheets Vietnam · Cambridge & CEFR Worksheets</title>
     <meta name="description" content="Generate 3-page Cambridge & CEFR-aligned ESL worksheets in seconds. Built for English teachers, centers, and IELTS classes in Vietnam." />
     <meta name="keywords" content="ESL worksheets Vietnam, Cambridge CEFR worksheets, Cambridge English worksheets, IELTS worksheets Vietnam, printable ESL worksheets, giáo án tiếng Anh, AI lesson planner" />
-    <meta name="robots" content="index, follow" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <meta name="googlebot" content="index, follow, max-image-preview:large" />
     <link rel="canonical" href="https://www.smartgiaoan.site/" />
+    <link rel="alternate" type="application/atom+xml" title="SmartGiaoAn Public Library Feed" href="https://smartgiaoan-backend.onrender.com/api/library/feed.xml" />
     
     <meta property="og:title" content="SmartGiaoAn - ESL Worksheets Vietnam" />
     <meta property="og:description" content="Instantly generate 3-page A4 Cambridge & CEFR worksheets localized for Vietnamese learners." />
@@ -19,31 +21,112 @@
     <meta property="og:image" content="%PUBLIC_URL%/og-image.svg" />
     <meta property="og:locale" content="en_VN" />
     <meta property="og:site_name" content="SmartGiaoAn" />
+    <meta property="og:image:alt" content="SmartGiaoAn ESL worksheets preview" />
 
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="SmartGiaoAn | Cambridge CEFR ESL Worksheets" />
     <meta name="twitter:description" content="3-page ESL worksheets, Vietnam-localized, Cambridge aligned. Print-ready in seconds." />
     <meta name="twitter:image" content="%PUBLIC_URL%/og-image.svg" />
+    <meta name="twitter:image:alt" content="SmartGiaoAn ESL worksheets preview" />
 
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
-        "@type": "WebSite",
-        "name": "SmartGiaoAn",
-        "url": "https://www.smartgiaoan.site/",
-        "description": "AI-powered ESL worksheet generator for Vietnamese teachers. Cambridge & CEFR aligned, print-ready in seconds.",
-        "inLanguage": "en-VN",
-        "publisher": {
-          "@type": "Organization",
-          "name": "SmartGiaoAn",
-          "url": "https://www.smartgiaoan.site/",
-          "logo": "https://www.smartgiaoan.site/favicon.svg"
-        },
-        "potentialAction": {
-          "@type": "SearchAction",
-          "target": "https://www.smartgiaoan.site/library?search={search_term_string}",
-          "query-input": "required name=search_term_string"
-        }
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://www.smartgiaoan.site/#organization",
+            "name": "SmartGiaoAn",
+            "url": "https://www.smartgiaoan.site/",
+            "logo": "https://www.smartgiaoan.site/favicon.svg",
+            "sameAs": [
+              "https://www.smartgiaoan.site/"
+            ]
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://www.smartgiaoan.site/#website",
+            "name": "SmartGiaoAn",
+            "url": "https://www.smartgiaoan.site/",
+            "description": "AI-powered ESL worksheet generator for Vietnamese teachers. Cambridge & CEFR aligned, print-ready in seconds.",
+            "inLanguage": "en-VN",
+            "publisher": {
+              "@id": "https://www.smartgiaoan.site/#organization"
+            },
+            "potentialAction": {
+              "@type": "SearchAction",
+              "target": "https://www.smartgiaoan.site/library?search={search_term_string}",
+              "query-input": "required name=search_term_string"
+            }
+          },
+          {
+            "@type": "Product",
+            "@id": "https://www.smartgiaoan.site/#product",
+            "name": "SmartGiaoAn ESL Worksheet Generator",
+            "description": "Create 3-page Cambridge & CEFR-aligned ESL worksheets localized for Vietnam. Print-ready in seconds.",
+            "brand": {
+              "@id": "https://www.smartgiaoan.site/#organization"
+            },
+            "category": "Education",
+            "audience": {
+              "@type": "EducationalAudience",
+              "educationalRole": "teacher"
+            },
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "GBP",
+              "url": "https://www.smartgiaoan.site/pricing",
+              "availability": "https://schema.org/InStock"
+            }
+          },
+          {
+            "@type": "FAQPage",
+            "@id": "https://www.smartgiaoan.site/faq#faq",
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "What is SmartGiaoAn?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "SmartGiaoAn generates Cambridge/CEFR-aligned ESL worksheets in seconds, localized for Vietnamese learners, with answer keys and print-ready layouts."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Who is it for?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Vietnamese teachers, international teachers in Vietnam, parents, and learners preparing for Cambridge or IELTS exams."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "How is the content localized to Vietnam?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Worksheets use Vietnamese names, cities, and culture references like Tet, banh mi, and ao dai for authentic context."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Can I print or save as PDF?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes. Every worksheet is A4-ready and includes print and PDF export options."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "How does the free plan work?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "You get three worksheets free. Sign in with Google to keep your quota, and earn extra credits by watching short rewarded ads."
+                }
+              }
+            ]
+          }
+        ]
       }
     </script>
     

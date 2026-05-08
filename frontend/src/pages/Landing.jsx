@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useI18n } from '../lib/i18n';
 import { useAuth } from '../lib/auth';
@@ -6,10 +6,15 @@ import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
 import { AdSlot } from '../components/AdSlot';
 import { LEVELS, SKILLS } from '../lib/catalog';
+import { wakeUpServer } from '../lib/api';
 
 export default function Landing() {
   const { t, lang } = useI18n();
   const { user, startLogin } = useAuth();
+
+  useEffect(() => {
+    wakeUpServer();
+  }, []);
 
   // Real, specific testimonials — first names + role + neighbourhood, not stock photos.
   const TESTIMONIALS = [

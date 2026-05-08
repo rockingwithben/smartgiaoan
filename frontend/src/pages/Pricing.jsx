@@ -175,6 +175,54 @@ export default function Pricing() {
 
   return (
     <PageShell eyebrow={tt.eyebrow} title={tt.title} intro={tt.intro}>
+      <script type="application/ld+json">
+        {JSON.stringify({
+          '@context': 'https://schema.org',
+          '@graph': [
+            {
+              '@type': 'Organization',
+              '@id': 'https://www.smartgiaoan.site/#organization',
+              name: 'SmartGiaoAn',
+              url: 'https://www.smartgiaoan.site/',
+              logo: 'https://www.smartgiaoan.site/favicon.svg',
+            },
+            {
+              '@type': 'Product',
+              '@id': 'https://www.smartgiaoan.site/pricing#product',
+              name: 'SmartGiaoAn ESL Worksheet Generator',
+              description: 'Cambridge & CEFR-aligned ESL worksheets localized for Vietnam. Print-ready in seconds.',
+              brand: { '@id': 'https://www.smartgiaoan.site/#organization' },
+              category: 'Education',
+              offers: [
+                {
+                  '@type': 'Offer',
+                  name: 'Free',
+                  price: '0',
+                  priceCurrency: 'GBP',
+                  availability: 'https://schema.org/InStock',
+                  url: 'https://www.smartgiaoan.site/pricing',
+                },
+                {
+                  '@type': 'Offer',
+                  name: 'Basic',
+                  price: '5.67',
+                  priceCurrency: 'GBP',
+                  availability: 'https://schema.org/InStock',
+                  url: 'https://www.smartgiaoan.site/pricing',
+                },
+                {
+                  '@type': 'Offer',
+                  name: 'Premium',
+                  price: '9.99',
+                  priceCurrency: 'GBP',
+                  availability: 'https://schema.org/InStock',
+                  url: 'https://www.smartgiaoan.site/pricing',
+                }
+              ]
+            }
+          ]
+        })}
+      </script>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto">
         {tiers.map((tier) => (
           <div

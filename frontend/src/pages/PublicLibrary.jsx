@@ -167,6 +167,21 @@ export default function PublicLibrary() {
                 key={ws.worksheet_id}
                 className="bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-xl transition-all flex flex-col overflow-hidden group"
               >
+                <script type="application/ld+json">
+                  {JSON.stringify({
+                    '@context': 'https://schema.org',
+                    '@type': 'CreativeWork',
+                    name: ws.title,
+                    description: `ESL worksheet for ${ws.level} (${ws.cefr}) — ${ws.skill}${ws.topic ? ` on ${ws.topic}` : ''}.`,
+                    url: `https://www.smartgiaoan.site/worksheet/${ws.worksheet_id}`,
+                    creator: {
+                      '@type': 'Organization',
+                      name: 'SmartGiaoAn',
+                    },
+                    educationalLevel: ws.cefr,
+                    inLanguage: 'en',
+                  })}
+                </script>
                 <div className="p-6 flex-grow">
                   <div className="flex justify-between items-start mb-4">
                     <span className="bg-red-50 text-red-700 text-xs font-black px-3 py-1 rounded-full uppercase tracking-wide">

@@ -2,4 +2,5 @@ User-agent: *
 Allow: /
 Disallow: /profile
 Disallow: /dashboard
+Allow: /api/library/feed.xml
 Sitemap: https://www.smartgiaoan.site/sitemap.xml

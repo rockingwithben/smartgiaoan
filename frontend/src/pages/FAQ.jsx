@@ -3,11 +3,11 @@ import { useI18n } from '../lib/i18n';
 import { PageShell } from '../components/PageShell';
 
 const FAQS_EN = [
-  { q: 'What is SmartGiaoAn?', a: 'A focused web app for Vietnamese ESL teachers, expats and parents that generates Cambridge / CEFR-aligned worksheets in seconds, with answer keys, teacher notes and a printable layout.' },
-  { q: 'Who is it for?', a: 'Local Vietnamese teachers, British / American expat teachers in Vietnam, parents homeschooling or supplementing at home, and self-driven learners preparing for Cambridge or IELTS exams.' },
+  { q: 'What is SmartGiaoAn?', a: 'A focused web app for ESL teachers, students, and parents in Vietnam that generates Cambridge / CEFR-aligned worksheets in seconds, with answer keys, teacher notes, and a printable layout.' },
+  { q: 'Who is it for?', a: 'Any ESL teacher, student, or parent in Vietnam following the Cambridge system — including local teachers, international teachers, homeschooling families, and self-driven learners.' },
   { q: 'Which CEFR levels are supported?', a: 'Pre-A1 (Starters) through C2 (Mastery). Pick a student level (Kindergarten / Primary / Secondary / IELTS) and a CEFR sub-level — the worksheet matches the official descriptors precisely.' },
   { q: 'Is the content really aligned to Cambridge?', a: 'Yes. The AI is prompted as a senior Cambridge ESOL examiner with explicit CEFR descriptors, follows the descriptor for the chosen band, mixes the question types Cambridge actually uses, and provides answer keys with rule-based explanations.' },
-  { q: 'How is the content localised to Vietnam?', a: 'Every person, place, holiday and reference is Vietnamese — Minh, Lan, Hanoi, Saigon, Tet, banh mi, ao dai, motorbikes, lotus ponds, modern cafe culture. Authentic, not stereotypical.' },
+  { q: 'How is the content localised to Vietnam?', a: 'Every person, place, holiday and reference is Vietnamese — Minh, Lan, Hanoi, Saigon, Tet, banh mi, ao dai, motorbikes, lotus ponds, modern cafe culture — so learners in Vietnam see their own world.' },
   { q: 'How is this different from Twinkl or other big resource sites?', a: 'They give you 14 tabs, endless filters, and templates that feel imported. We give you one input field and three printable pages — locally relevant. Different philosophy. Different price.' },
   { q: 'How does the free plan work?', a: 'You get 3 worksheets free in your browser. Sign in with Google to keep that quota across devices, then earn extra credits by watching a 15 / 30 / 45-second rewarded ad (1 / 2 / 3 credits respectively).' },
   { q: 'How does Premium work?', a: '£5/month via PayPal. Unlimited worksheets, zero ads, priority generation. Cancel anytime in PayPal — no contract, no hassle.' },
@@ -24,11 +24,11 @@ const FAQS_EN = [
 ];
 
 const FAQS_VI = [
-  { q: 'SmartGiaoAn là gì?', a: 'Công cụ web dành cho giáo viên ESL Việt Nam, expat và phụ huynh — tạo bài tập chuẩn Cambridge/CEFR trong vài giây, kèm đáp án, ghi chú giáo viên và bố cục in sẵn.' },
-  { q: 'Dành cho ai?', a: 'Giáo viên Việt, giáo viên expat ở Việt Nam, phụ huynh dạy thêm tại nhà, và người tự học chuẩn bị thi Cambridge hoặc IELTS.' },
+  { q: 'SmartGiaoAn là gì?', a: 'Công cụ web dành cho giáo viên, học sinh và phụ huynh học ESL tại Việt Nam — tạo bài tập chuẩn Cambridge/CEFR trong vài giây, kèm đáp án, ghi chú giáo viên và bố cục in sẵn.' },
+  { q: 'Dành cho ai?', a: 'Bất kỳ giáo viên, học sinh hoặc phụ huynh học ESL tại Việt Nam theo hệ Cambridge — từ giáo viên Việt, giáo viên expat, gia đình homeschool đến người tự học.' },
   { q: 'Hỗ trợ những trình độ CEFR nào?', a: 'Pre-A1 (Starters) đến C2 (Mastery). Chọn cấp học (Mầm non / Tiểu học / THCS-THPT / IELTS) và CEFR — bài tập sẽ bám chuẩn descriptor.' },
   { q: 'Nội dung có thật sự chuẩn Cambridge không?', a: 'Có. AI được hướng dẫn như giám khảo Cambridge ESOL kỳ cựu, theo đúng descriptor CEFR, mix các dạng câu hỏi Cambridge thường dùng, có đáp án giải thích.' },
-  { q: 'Bản địa hoá Việt Nam ra sao?', a: 'Tất cả tên người, địa danh, ngày lễ đều là của Việt Nam — Minh, Lan, Hà Nội, Sài Gòn, Tết, bánh mì, áo dài, văn hoá cà phê hiện đại. Authentic, không sáo rỗng.' },
+  { q: 'Bản địa hoá Việt Nam ra sao?', a: 'Tất cả tên người, địa danh, ngày lễ đều là của Việt Nam — Minh, Lan, Hà Nội, Sài Gòn, Tết, bánh mì, áo dài, văn hoá cà phê hiện đại — để người học thấy chính mình trong bài.' },
   { q: 'Khác Twinkl và các trang lớn ở điểm nào?', a: 'Họ cho bạn 14 tab, vô số filter, template như “nhập khẩu”. Chúng tôi cho bạn một ô nhập và ba trang in — đúng bản địa. Triết lý khác, giá khác.' },
   { q: 'Gói miễn phí hoạt động ra sao?', a: '3 bài miễn phí trong trình duyệt. Đăng nhập Google để giữ quota khi đổi thiết bị, rồi xem QC 15/30/45 giây để được thêm 1/2/3 credit.' },
   { q: 'Premium hoạt động thế nào?', a: '£5/tháng qua PayPal. Bài tập không giới hạn, không quảng cáo, ưu tiên tốc độ. Huỷ bất kỳ lúc nào trong PayPal — không hợp đồng, không phiền toái.' },
@@ -48,12 +48,27 @@ export default function FAQ() {
   const { lang } = useI18n();
   const items = lang === 'vi' ? FAQS_VI : FAQS_EN;
   const [open, setOpen] = useState(0);
+  const faqJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: items.map((item) => ({
+      '@type': 'Question',
+      name: item.q,
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: item.a,
+      },
+    })),
+  };
   return (
     <PageShell
       eyebrow={lang === 'vi' ? 'Câu hỏi thường gặp' : 'Frequently asked'}
       title={lang === 'vi' ? 'Mọi điều bạn muốn hỏi.' : 'Everything you wanted to ask.'}
       intro={lang === 'vi' ? 'Không tìm thấy câu trả lời? Liên hệ với chúng tôi qua trang Liên hệ — email được trả lời trong 24 giờ làm việc.' : 'Can\u2019t find your answer? Reach us on the Contact page — emails answered within 24 working hours.'}
     >
+      <script type="application/ld+json">
+        {JSON.stringify(faqJsonLd)}
+      </script>
       <div className="divide-y divide-border border-y border-border" data-testid="faq-list">
         {items.map((it, i) => (
           <div key={i} className="py-5">

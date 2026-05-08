@@ -101,11 +101,12 @@ export default function Dashboard() {
     
     // Psychological Wait-Time Reduction
     const loadingPhrases = [
-      "Analyzing CEFR Level...",
-      "Structuring Grammar Exercises...",
-      "Writing Vietnamese Contexts...",
-      "Formatting Answer Key...",
-      "Finalizing PDF Layout..."
+      "Warming up the AI engine...",
+      "Analyzing CEFR level...",
+      "Structuring grammar exercises...",
+      "Writing Vietnamese contexts...",
+      "Drafting answer keys...",
+      "Finalizing print-ready layout..."
     ];
     
     let phraseIndex = 0;

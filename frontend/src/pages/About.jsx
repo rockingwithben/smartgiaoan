@@ -11,11 +11,11 @@ export default function About() {
   const en = {
     eyebrow: 'The SmartGiaoAn Manifesto',
     title: 'Built for the frontline.',
-    intro: 'For local teachers, expats, parents, and driven learners. SmartGiaoAn (giáo án = lesson plan) exists to give you your evenings back — without compromising one ounce of the educational rigour your students deserve.',
+    intro: 'For ESL teachers, students, and parents across Vietnam following the Cambridge system. SmartGiaoAn (giáo án = lesson plan) exists to give you your evenings back — without compromising one ounce of the educational rigour learners deserve.',
 
     problem_h: 'The Problem',
     problem_b: 'The current landscape of ESL resources is broken. Giant corporate platforms charge hefty subscriptions for bloated dashboards and endless scrolling, only to give you materials that feel generic and disconnected from your actual classroom. On the flip side, basic AI tools spit out bland, unaligned fluff.',
-    problem_c: 'Whether you’re a local teacher in Hanoi, a British expat teaching kindergarten in Saigon, or a parent trying to give your child an edge at home, sourcing true Cambridge-style rigour that actually references the world around you is nearly impossible.',
+    problem_c: 'Whether you’re a local teacher in Hanoi, an international teacher in Da Nang, a student preparing for Cambridge exams, or a parent supporting learning at home, sourcing true Cambridge-style rigour that reflects life in Vietnam is nearly impossible.',
 
     answer_h: 'Our Answer',
     answer_b: 'We built the anti-bloat alternative. SmartGiaoAn is a laser-focused engine that does exactly one thing brilliantly: it generates CEFR-aligned, Cambridge-grade worksheets that feel authentic, look professional, and print perfectly. No fluff. No 14-tab menus. Just top-tier materials in seconds.',
@@ -29,7 +29,7 @@ export default function About() {
     ],
 
     promise_h: 'A small promise',
-    promise_b: 'You shouldn’t need to spend Sunday evening typing worksheets in Word when an exam-aligned alternative exists. We will keep this tool focused, fast, fair-priced and locally relevant — for as long as a single Vietnamese teacher finds it useful.',
+    promise_b: 'You shouldn’t need to spend Sunday evening typing worksheets in Word when an exam-aligned alternative exists. We will keep this tool focused, fast, fair-priced and locally relevant — for as long as a single ESL learner in Vietnam finds it useful.',
 
     cta: 'Try the generator',
   };
@@ -37,11 +37,11 @@ export default function About() {
   const vi = {
     eyebrow: 'Tuyên ngôn SmartGiaoAn',
     title: 'Được tạo cho tuyến đầu.',
-    intro: 'Dành cho giáo viên Việt, expat, phụ huynh và người học chăm chỉ. SmartGiaoAn (giáo án = lesson plan) tồn tại để trả lại cho bạn những buổi tối — mà không hy sinh một chút chuẩn mực giáo dục nào học sinh xứng đáng.',
+    intro: 'Dành cho giáo viên, học sinh và phụ huynh học ESL tại Việt Nam theo hệ Cambridge. SmartGiaoAn (giáo án = lesson plan) tồn tại để trả lại cho bạn những buổi tối — mà không hy sinh một chút chuẩn mực giáo dục nào người học xứng đáng.',
 
     problem_h: 'Vấn đề',
     problem_b: 'Thị trường tài liệu ESL đang bế tắc. Những nền tảng lớn thu phí thuê bao cao chỉ để cho bạn dashboard ngồn ngộn và lăn chuột mãi không hết, kết quả là tài liệu vẫn cứ nhạt và xa rời lớp học thật. Mặt khác, các công cụ AI cơ bản chỉ phun ra văn bản nhạt nhẽo, không khớp chuẩn.',
-    problem_c: 'Dù bạn là giáo viên ở Hà Nội, expat người Anh dạy mầm non ở Sài Gòn, hay phụ huynh muốn con mình có lợi thế ở nhà — tìm chuẩn Cambridge thực sự mà còn phản ánh đúng cuộc sống xung quanh là điều gần như bất khả thi.',
+    problem_c: 'Dù bạn là giáo viên ở Hà Nội, giáo viên quốc tế ở Đà Nẵng, học sinh chuẩn bị thi Cambridge, hay phụ huynh hỗ trợ con học ở nhà — tìm chuẩn Cambridge thực sự mà còn phản ánh đúng cuộc sống Việt Nam là điều gần như bất khả thi.',
 
     answer_h: 'Lời giải của chúng tôi',
     answer_b: 'Chúng tôi xây giải pháp “anti-bloat”. SmartGiaoAn là một engine tập trung làm xuất sắc một việc duy nhất: tạo bài tập chuẩn CEFR/Cambridge, mang chất bản địa, chuyên nghiệp và in ra hoàn hảo. Không rườm rà. Không 14 tab dashboard. Chỉ tài liệu hàng đầu trong vài giây.',
@@ -55,7 +55,7 @@ export default function About() {
     ],
 
     promise_h: 'Một lời hứa nhỏ',
-    promise_b: 'Bạn không nên phải dành tối Chủ nhật gõ bài tập trong Word khi đã có lựa chọn bám chuẩn thi cử. Chúng tôi sẽ giữ công cụ này tập trung, nhanh, giá hợp lý và đậm chất bản địa — chừng nào còn một giáo viên Việt thấy hữu ích.',
+    promise_b: 'Bạn không nên phải dành tối Chủ nhật gõ bài tập trong Word khi đã có lựa chọn bám chuẩn thi cử. Chúng tôi sẽ giữ công cụ này tập trung, nhanh, giá hợp lý và đậm chất bản địa — chừng nào còn một người học ESL tại Việt Nam thấy hữu ích.',
 
     cta: 'Thử generator',
   };
