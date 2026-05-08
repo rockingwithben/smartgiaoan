@@ -1202,19 +1202,79 @@ async def downgrade(user: User = Depends(require_user)):
 @api_router.post("/webhooks/paypal")
 async def paypal_webhook(request: Request):
     try:
-        data       = json.loads(await request.body())
-        event_type = data.get("event_type", "")
-        resource   = data.get("resource", {})
-        logger.info(f"PayPal webhook: {event_type}")
+            # Validate webhook signature
+            paypal_cert_url = request.headers.get("paypal-transmission-certurl")
+            paypal_sig = request.headers.get("paypal-transmission-sig")
+            paypal_time = request.headers.get("paypal-transmission-time")
+            webhook_id = os.environ.get("PAYPAL_WEBHOOK_ID") # Stored in .env
+            if not all([paypal_cert_url, paypal_sig, paypal_time, webhook_id]):
+                logger.warning("Missing PayPal webhook headers or WEBHOOK_ID.")
+                raise HTTPException(status_code=400, detail="Missing PayPal webhook headers or WEBHOOK_ID.")
 
-        if event_type in ("BILLING.SUBSCRIPTION.ACTIVATED", "BILLING.SUBSCRIPTION.PAYMENT.COMPLETED"):
-            sub_id    = resource.get("id", "")
-            custom_id = resource.get("custom_id") or resource.get("subscriber", {}).get("custom_id", "")
-            plan_id   = resource.get("plan_id", "")
+            # Reconstruct the signed data
+            message = paypal_transmission_id + "|" + paypal_cert_url + "|" + paypal_transmission_time + "|" + webhook_id + "|" + body.decode("utf-8")
             
-            if custom_id and custom_id.startswith("user_"):
-                tier = "premium"
-                if plan_id == "P-40482060EU873762GNH7A6YI" or "pro" in custom_id.lower():
+            # Verify the signature (this is a simplified example, real verification is more complex)
+            # For a real application, you would fetch the certificate from paypal_cert_url, 
+            # extract the public key, and use it to verify the signature.
+            # This example only logs the event, but for a production app, you'd perform full verification.
+            
+            if not await _verify_paypal_webhook_signature(request):
+                logger.error("PayPal webhook signature verification failed.")
+                raise HTTPException(status_code=403, detail="Webhook signature verification failed.")
+
+            body = await request.body()
+            headers = request.headers
+            paypal_transmission_id = headers.get("paypal-transmission-id")
+            paypal_transmission_time = headers.get("paypal-transmission-time")
+            paypal_cert_url = headers.get("paypal-transmission-certurl")
+            paypal_auth_algo = headers.get("paypal-auth-algo")
+            paypal_webhook_id = os.environ.get("PAYPAL_WEBHOOK_ID")
+            paypal_transmission_sig = headers.get("paypal-transmission-sig")
+
+            if not all([paypal_transmission_id, paypal_transmission_time, paypal_cert_url,
+                        paypal_auth_algo, paypal_webhook_id, paypal_transmission_sig]):
+                logger.error("Missing PayPal webhook headers.")
+                raise HTTPException(status_code=400, detail="Missing PayPal webhook headers.")
+
+            verification_data = {
+                "transmission_id": paypal_transmission_id,
+                "transmission_time": paypal_transmission_time,
+                "cert_url": paypal_cert_url,
+                "auth_algo": paypal_auth_algo,
+                "transmission_sig": paypal_transmission_sig,
+                "webhook_id": paypal_webhook_id,
+                "webhook_event": json.loads(body)
+            }
+            
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                verify_url = f"{PAYPAL_BASE_URL}/v1/notifications/verify-webhook-signature"
+                response = await client.post(verify_url, json=verification_data)
+                response.raise_for_status()
+                verification_status = response.json()
+
+            if verification_status.get("verification_status") != "SUCCESS":
+                logger.error(f"PayPal webhook verification failed: {verification_status}")
+                raise HTTPException(status_code=403, detail="PayPal webhook verification failed.")
+
+            data = json.loads(body)
+            event_type = data.get("event_type", "")
+            resource = data.get("resource", {})
+            logger.info(f"PayPal webhook event received: {event_type}")
+
+            # Extract custom_id for user identification (assuming it\'s passed during subscription creation)
+            # The custom_id would ideally be in the form of "user_xxx"
+            custom_id = resource.get("custom_id") or resource.get("subscriber", {}).get("custom_id", "")
+            if not custom_id or not custom_id.startswith("user_"):
+                logger.warning(f"PayPal webhook received with missing or invalid custom_id: {custom_id}")
+                return {"status": "ignored", "message": "Missing or invalid custom_id"}
+
+            sub_id = resource.get("id", "")
+            plan_id = resource.get("plan_id", "") # Useful for distinguishing between Premium and Pro plans
+
+            if event_type == "BILLING.SUBSCRIPTION.ACTIVATED":
+                tier = "premium" # Default to premium
+                if plan_id == os.environ.get("PAYPAL_PRO_PLAN_ID"): 
                     tier = "pro"
                 
                 await db.users.update_one({"user_id": custom_id}, {"$set": {
@@ -1223,14 +1283,75 @@ async def paypal_webhook(request: Request):
                     "monthly_reset_at": (_now() + timedelta(days=30)).isoformat(),
                     "paypal_subscription_id": sub_id
                 }})
+                logger.info(f"User {custom_id} activated {tier} subscription {sub_id}")
 
-        elif event_type == "BILLING.SUBSCRIPTION.CANCELLED":
-            custom_id = resource.get("custom_id") or resource.get("subscriber", {}).get("custom_id", "")
-            if custom_id and custom_id.startswith("user_"):
+            elif event_type == "BILLING.SUBSCRIPTION.CANCELLED" or event_type == "BILLING.SUBSCRIPTION.EXPIRED":
                 await db.users.update_one({"user_id": custom_id}, {"$set": {
                     "subscription_tier": "free", "is_premium": False,
                     "paypal_subscription_id": None, "ai_edit_credits": 0
                 }})
+                logger.info(f"User {custom_id} subscription {sub_id} cancelled/expired.")
+
+            elif event_type == "BILLING.SUBSCRIPTION.SUSPENDED":
+                await db.users.update_one({"user_id": custom_id}, {"$set": {
+                    "subscription_tier": "free", "is_premium": False,
+                    "ai_edit_credits": 0 # Retain paypal_subscription_id to potentially re-activate
+                }})
+                logger.warning(f"User {custom_id} subscription {sub_id} suspended.")
+
+            elif event_type == "BILLING.SUBSCRIPTION.RE-ACTIVATED":
+                tier = "premium"
+                if plan_id == os.environ.get("PAYPAL_PRO_PLAN_ID"): 
+                    tier = "pro"
+                await db.users.update_one({"user_id": custom_id}, {"$set": {
+                    "subscription_tier": tier, "is_premium": True, "free_used": 0,
+                    "ai_edit_credits": TIER_CONFIG[tier]["ai_edits_per_month"],
+                    "monthly_reset_at": (_now() + timedelta(days=30)).isoformat(),
+                    "paypal_subscription_id": sub_id
+                }})
+                logger.info(f"User {custom_id} subscription {sub_id} re-activated to {tier}.")
+
+            elif event_type == "BILLING.SUBSCRIPTION.UPDATED":
+                tier = "premium"
+                if plan_id == os.environ.get("PAYPAL_PRO_PLAN_ID"): 
+                    tier = "pro"
+                await db.users.update_one({"user_id": custom_id}, {"$set": {
+                    "subscription_tier": tier, 
+                    "ai_edit_credits": TIER_CONFIG[tier]["ai_edits_per_month"],
+                    "monthly_reset_at": (_now() + timedelta(days=30)).isoformat() # Reset monthly quota
+                }})
+                logger.info(f"User {custom_id} subscription {sub_id} updated to {tier}.")
+
+            elif event_type == "PAYMENT.SALE.COMPLETED":
+                # Handle one-time payments (e.g., for AI edit packs)
+                # Assume custom_id format: "user_ID-product_type"
+                if "-" in custom_id:
+                    user_id_part, product_type = custom_id.split("-", 1)
+                    if product_type == "ai_edit_pack":
+                        await db.users.update_one({"user_id": user_id_part}, {"$inc": {"ai_edit_credits": 10}})
+                        logger.info(f"User {user_id_part} received 10 AI edit credits from one-time payment.")
+                    else:
+                        logger.warning(f"Unhandled one-time product type: {product_type} for user {user_id_part}")
+                else:
+                    logger.warning(f"One-time payment without product_type in custom_id: {custom_id}")
+
+            else:
+                logger.info(f"Unhandled PayPal webhook event: {event_type}")
+
+
+            # Example for verifying PayPal webhooks. In a production environment,
+            # you MUST verify the authenticity of the webhook to ensure it comes from PayPal.
+            # This typically involves:
+            # 1. Fetching the certificate chain from paypal-transmission-certurl.
+            # 2. Validating the certificate chain.
+            # 3. Reconstructing the signed message.
+            # 4. Verifying the paypal-transmission-sig using the public key from the certificate.
+            # For simplicity, this example skips full verification, but it's crucial for security.
+            # Refer to PayPal's documentation for exact verification steps:
+            # https://developer.paypal.com/api/rest/webhooks/validate-events/
+
+
+            return {"status": "ok"}
     except Exception as e:
         logger.error(f"PayPal webhook error: {e}")
     return {"status": "ok"}
