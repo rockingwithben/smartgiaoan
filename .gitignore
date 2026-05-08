@@ -87,3 +87,5 @@ credentials.json
 *.pem
 *.key
 .credentials
+backend/test_google.py
+.env
