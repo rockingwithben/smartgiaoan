@@ -12,3 +12,4 @@ anyio==4.13.0
 google-cloud-aiplatform>=1.49.0
 google-auth>=2.29.0
 cryptography==42.0.7
+python-docx==0.8.11
