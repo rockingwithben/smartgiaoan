@@ -11,6 +11,16 @@ export default function RewardedAdModal({ tier, onClose, onGranted }) {
   const [claiming, setClaiming] = useState(false);
 
   useEffect(() => {
+    // Push the AdSense ad when the modal opens
+    try {
+      (window.adsbygoogle = window.adsbygoogle || []).push({});
+    } catch (err) {
+      console.error('AdSense error:', err);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     if (remaining <= 0) {
       setReady(true);
       return;
@@ -48,8 +58,14 @@ export default function RewardedAdModal({ tier, onClose, onGranted }) {
           </span>
         </div>
 
-        <div className="w-24 h-24 bg-gray-100 rounded-xl mx-auto mb-4 flex items-center justify-center">
-          <span className="text-gray-400 text-sm font-medium">AD</span>
+        <div className="w-full bg-gray-100 rounded-xl mx-auto mb-4 flex items-center justify-center overflow-hidden min-h-[150px]">
+          <ins 
+            className="adsbygoogle"
+            style={{ display: 'block', width: '100%', height: '100%' }}
+            data-ad-client="ca-pub-6737475067243465"
+            data-ad-format="auto"
+            data-full-width-responsive="true"
+          ></ins>
         </div>
 
         <h4 className="text-lg font-bold text-gray-900 mb-1">

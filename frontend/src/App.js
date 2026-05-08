@@ -22,6 +22,7 @@ import ProfileSettings from './pages/ProfileSettings';
 import AuthModal from './pages/AuthModal';
 import WorksheetView from './pages/WorksheetView';
 import { CookieConsent } from './components/CookieConsent';
+import { AdManager } from './components/AdManager';
 import './App.css';
 
 class ErrorBoundary extends React.Component {
@@ -60,6 +61,7 @@ class ErrorBoundary extends React.Component {
 function AppRouter() {
   return (
     <>
+      <AdManager />
       <Routes>
         <Route path="/" element={<Landing />} />
         {/* FIX: Restored the manual login route */}

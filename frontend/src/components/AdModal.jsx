@@ -10,6 +10,13 @@ export default function AdModal({ isOpen, duration, onComplete, onClose }) {
     if (!isOpen) return;
     setTimeLeft(duration);
     setCanSkip(false);
+
+    // Push the AdSense ad when the modal opens
+    try {
+      (window.adsbygoogle = window.adsbygoogle || []).push({});
+    } catch (err) {
+      console.error('AdSense error:', err);
+    }
     
     const timer = setInterval(() => {
       setTimeLeft((prev) => {
@@ -60,8 +67,14 @@ export default function AdModal({ isOpen, duration, onComplete, onClose }) {
 
         {/* Ad Content Placeholder */}
         <div className="p-8 text-center">
-          <div className="bg-gray-100 rounded-xl h-40 flex items-center justify-center mb-4">
-            <p className="text-gray-400 font-bold">Advertisement Placeholder</p>
+          <div className="bg-gray-100 rounded-xl min-h-[200px] flex items-center justify-center mb-4 overflow-hidden">
+            <ins 
+              className="adsbygoogle"
+              style={{ display: 'block', width: '100%', height: '100%' }}
+              data-ad-client="ca-pub-6737475067243465"
+              data-ad-format="auto"
+              data-full-width-responsive="true"
+            ></ins>
           </div>
           <p className="text-sm text-gray-600">
             Watch this short ad to continue generating worksheets for free.
