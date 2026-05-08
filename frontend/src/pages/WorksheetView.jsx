@@ -1,10 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { http } from '../lib/api';
-import { Printer, Share2, Copy, Check, AlertTriangle, BookOpen, GraduationCap, Calendar, ChevronDown, ChevronUp } from 'lucide-react';
+import { http, aiEditWorksheet } from '../lib/api';
+import { Printer, Share2, Copy, Check, AlertTriangle, BookOpen, GraduationCap, Calendar, ChevronDown, ChevronUp, Wand2, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
+import { PaywallModal } from '../components/PaywallModal';
 
 export default function WorksheetView() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [worksheet, setWorksheet] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -12,6 +16,10 @@ export default function WorksheetView() {
   const [showRaw, setShowRaw] = useState(false);
   const [showAnswerKey, setShowAnswerKey] = useState(false);
   const [downloadingDocx, setDownloadingDocx] = useState(false);
+  
+  const [isEditing, setIsEditing] = useState(false);
+  const [editCommand, setEditCommand] = useState('');
+  const [showPaywall, setShowPaywall] = useState(false);
 
   useEffect(() => {
     const fetchWorksheet = async () => {
@@ -42,6 +50,27 @@ export default function WorksheetView() {
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleAiEdit = async (e) => {
+    e.preventDefault();
+    if (!editCommand.trim()) return;
+    
+    setIsEditing(true);
+    try {
+      const newWs = await aiEditWorksheet(id, editCommand);
+      toast.success('Worksheet edited successfully!');
+      setEditCommand('');
+      navigate(`/worksheet/${newWs.worksheet_id}`);
+    } catch (err) {
+      if (err.response?.status === 402) {
+        setShowPaywall(true);
+      } else {
+        toast.error(err.response?.data?.detail || 'Failed to edit worksheet');
+      }
+    } finally {
+      setIsEditing(false);
+    }
   };
 
   const handleDownloadDocx = async () => {
@@ -98,6 +127,32 @@ export default function WorksheetView() {
   const hasGrammar = content.grammar && (content.grammar.exercises?.length > 0 || content.grammar.explanation);
   const hasWriting = content.writing || content.writing_task;
   const hasPassage = content.reading_passage || content.passage;
+  const hasListeningScript = content.listening_script;
+
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  const handleTTS = () => {
+    if (isPlaying) {
+      window.speechSynthesis.cancel();
+      setIsPlaying(false);
+      return;
+    }
+    
+    if (content.listening_script) {
+      const utterance = new SpeechSynthesisUtterance(content.listening_script);
+      utterance.onend = () => setIsPlaying(false);
+      utterance.onerror = () => setIsPlaying(false);
+      window.speechSynthesis.speak(utterance);
+      setIsPlaying(true);
+    }
+  };
+
+  // Stop audio if unmounted
+  useEffect(() => {
+    return () => {
+      window.speechSynthesis.cancel();
+    };
+  }, []);
 
   // Collect all answers for the answer key
   const allAnswers = [];
@@ -150,30 +205,43 @@ export default function WorksheetView() {
       
       {/* ── ACTION BAR (hidden when printing) ── */}
       <div className="print:hidden sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-gray-200">
-        <div className="max-w-5xl mx-auto px-4 sm:px-8 py-3 flex justify-between items-center">
+        <div className="max-w-5xl mx-auto px-4 sm:px-8 py-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <Link to="/dashboard" className="flex items-center gap-2 text-gray-700 font-bold hover:text-black transition">
             <ChevronDown className="w-5 h-5 rotate-90" />
             Dashboard
           </Link>
-          <div className="flex items-center gap-2">
+          
+          <form onSubmit={handleAiEdit} className="flex-1 max-w-md w-full flex gap-2">
+            <input 
+              type="text" 
+              value={editCommand}
+              onChange={(e) => setEditCommand(e.target.value)}
+              placeholder="AI Edit (e.g., 'Make section 2 harder')" 
+              className="flex-1 text-sm border border-gray-300 rounded-lg px-3 py-2 outline-none focus:border-purple-500 transition"
+              disabled={isEditing}
+            />
+            <button
+              type="submit"
+              disabled={isEditing || !editCommand.trim()}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold bg-purple-100 text-purple-700 hover:bg-purple-200 transition disabled:opacity-50"
+              title="1 Free Edit per month"
+            >
+              {isEditing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
+              Edit
+            </button>
+          </form>
+
+          <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto pb-2 sm:pb-0">
             <button
               onClick={handleCopyLink}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold border border-gray-300 hover:bg-gray-50 transition"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold border border-gray-300 hover:bg-gray-50 transition whitespace-nowrap"
             >
               {copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
               {copied ? 'Copied!' : 'Copy Link'}
             </button>
             <button
-              onClick={handleDownloadDocx}
-              disabled={downloadingDocx}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold border border-blue-600 text-blue-600 hover:bg-blue-50 transition disabled:opacity-50"
-            >
-              <BookOpen className="w-4 h-4" />
-              {downloadingDocx ? 'Generating...' : 'Word Doc'}
-            </button>
-            <button
               onClick={handlePrint}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold bg-black text-white hover:bg-gray-800 transition shadow-sm"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold bg-black text-white hover:bg-gray-800 transition shadow-sm whitespace-nowrap"
             >
               <Printer className="w-4 h-4" />
               Print / PDF
@@ -226,6 +294,24 @@ export default function WorksheetView() {
           </div>
           <div className="w-32 border-b-2 border-dashed border-gray-400 pb-1 text-right">Score: _____/100</div>
         </div>
+
+        {/* Listening Script & TTS */}
+        {hasListeningScript && (
+          <section className="mb-10 print:break-inside-avoid p-6 bg-blue-50 rounded-xl border border-blue-200 print:bg-white print:border-gray-400">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold text-xl uppercase tracking-wide text-blue-900">Listening Transcript</h3>
+              <button 
+                onClick={handleTTS}
+                className="print:hidden flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-full font-bold text-sm transition shadow-sm"
+              >
+                {isPlaying ? '⏹ Stop Audio' : '▶️ Play Audio'}
+              </button>
+            </div>
+            <p className="whitespace-pre-wrap text-lg leading-loose text-blue-900 print:text-black">
+              {content.listening_script}
+            </p>
+          </section>
+        )}
 
         {/* Reading Passage */}
         {hasPassage && (
@@ -422,6 +508,7 @@ export default function WorksheetView() {
           <p className="mt-1">© {new Date().getFullYear()} SmartGiaoAn. For educational use only.</p>
         </footer>
       </div>
+      <PaywallModal open={showPaywall} onClose={() => setShowPaywall(false)} onWatchAd={() => {}} />
     </div>
   );
 }

@@ -71,6 +71,11 @@ export async function generateWorksheet(payload) {
   return r.data;
 }
 
+export async function aiEditWorksheet(worksheet_id, command) {
+  const r = await http.post('/worksheets/ai-edit', { worksheet_id, command });
+  return r.data;
+}
+
 export async function listWorksheets() {
   const r = await http.get('/worksheets');
   return r.data;
@@ -83,6 +88,11 @@ export async function grantRewarded(tier) {
 
 export async function markPremium() {
   const r = await http.post('/billing/mark-premium');
+  return r.data;
+}
+
+export async function capturePayPal(order_id, product_type) {
+  const r = await http.post('/billing/paypal-capture', { order_id, product_type });
   return r.data;
 }
 

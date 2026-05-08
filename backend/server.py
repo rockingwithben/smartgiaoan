@@ -63,25 +63,25 @@ _GEMINI_FALLBACKS = {
 TIER_CONFIG = {
     "free": {
         "model": GEMINI_MODEL_FREE,
-        "monthly_quota": 999999,
-        "ai_edits_per_month": 0,
+        "lifetime_quota": 3,
+        "ai_edits_per_month": 1,
         "has_word_editor": True,
         "has_ai_editor": False,
         "has_ads": True,
         "ad_frequency_base": 0.3,
     },
-    "basic": {
+    "premium": {
         "model": GEMINI_MODEL_BASIC,
-        "monthly_quota": 50,
-        "ai_edits_per_month": 0,
+        "monthly_quota": 999999,
+        "ai_edits_per_month": 999999,
         "has_word_editor": True,
         "has_ai_editor": False,
         "has_ads": False,
     },
-    "premium": {
+    "pro": {
         "model": GEMINI_MODEL_PREMIUM,
         "monthly_quota": 999999,
-        "ai_edits_per_month": 50,
+        "ai_edits_per_month": 999999,
         "has_word_editor": True,
         "has_ai_editor": True,
         "has_ads": False,
@@ -212,29 +212,36 @@ async def _load_user(doc: dict) -> Optional[User]:
     return User(**doc)
 
 async def refresh_user_credits(user: User) -> User:
-    if user.subscription_tier in ("basic", "premium"):
-        now = _now()
-        needs_reset = False
-        if not user.monthly_reset_at:
+    now = _now()
+    needs_reset = False
+    if not user.monthly_reset_at:
+        needs_reset = True
+    else:
+        try:
+            needs_reset = _parse_dt(user.monthly_reset_at) < now
+        except Exception:
             needs_reset = True
-        else:
-            try:
-                needs_reset = _parse_dt(user.monthly_reset_at) < now
-            except Exception:
-                needs_reset = True
-        if needs_reset:
-            config = TIER_CONFIG[user.subscription_tier]
-            await db.users.update_one(
-                {"user_id": user.user_id},
-                {"$set": {
-                    "ai_edit_credits": config["ai_edits_per_month"],
-                    "monthly_reset_at": (now + timedelta(days=30)).isoformat(),
-                    "free_used": 0
-                }}
-            )
-            user.ai_edit_credits = config["ai_edits_per_month"]
+            
+    if needs_reset:
+        config = TIER_CONFIG.get(user.subscription_tier, TIER_CONFIG["free"])
+        
+        updates = {
+            "ai_edit_credits": config["ai_edits_per_month"],
+            "monthly_reset_at": (now + timedelta(days=30)).isoformat()
+        }
+        
+        # Only reset free_used for premium/pro, since free tier's quota is lifetime
+        if user.subscription_tier != "free":
+            updates["free_used"] = 0
             user.free_used = 0
-            user.monthly_reset_at = now + timedelta(days=30)
+            
+        await db.users.update_one(
+            {"user_id": user.user_id},
+            {"$set": updates}
+        )
+        user.ai_edit_credits = config["ai_edits_per_month"]
+        user.monthly_reset_at = now + timedelta(days=30)
+        
     return user
 
 async def _create_session(user_id: str, response: Response) -> str:
@@ -277,7 +284,7 @@ async def require_user(user: Optional[User] = Depends(get_current_user_optional)
     return user
 
 def require_tier(min_tier: str):
-    tier_order = {"free": 0, "basic": 1, "premium": 2}
+    tier_order = {"free": 0, "premium": 1, "pro": 2}
     async def _require_tier(user: User = Depends(require_user)) -> User:
         user = await refresh_user_credits(user)
         if tier_order.get(user.subscription_tier, 0) < tier_order.get(min_tier, 0):
@@ -434,6 +441,8 @@ Rules:
         base += "\n- PRIMARY OVERRIDE: Focus on vocab matching, gap-fills, and short stories about Vietnam. Spacious formatting."
     else:
         base += "\n- SECONDARY/IELTS OVERRIDE: Rigorous academic content, complex reading comprehension, and full answer keys."
+        
+    base += "\n- IF SKILL IS LISTENING: You MUST include a 'listening_script' field in the JSON with the text of the audio track."
     return base
 
 
@@ -652,7 +661,10 @@ async def generate_ws(payload: WorksheetRequest, user: User = Depends(require_us
     user   = await refresh_user_credits(user)
     config = TIER_CONFIG.get(user.subscription_tier, TIER_CONFIG["free"])
 
-    if user.subscription_tier != "free":
+    if user.subscription_tier == "free":
+        if user.free_used >= config["lifetime_quota"] + user.bonus_credits:
+            raise HTTPException(status_code=402, detail="Free quota reached. Upgrade to Premium for unlimited worksheets.")
+    else:
         if user.free_used >= config["monthly_quota"] + user.bonus_credits:
             raise HTTPException(status_code=402, detail="Monthly quota reached. Upgrade for more.")
 
@@ -848,10 +860,11 @@ async def update_worksheet(worksheet_id: str, payload: UpdateWorksheetRequest, u
 # API ROUTES — AI EDITOR (PREMIUM)
 # ============================================================
 @api_router.post("/worksheets/ai-edit")
-async def ai_edit_worksheet(payload: AIEditRequest, user: User = Depends(require_tier("premium"))):
+async def ai_edit_worksheet(payload: AIEditRequest, user: User = Depends(require_user)):
     user = await refresh_user_credits(user)
     if user.ai_edit_credits < 1:
-        raise HTTPException(status_code=402, detail="No AI edit credits remaining.")
+        raise HTTPException(status_code=402, detail="No AI edit credits remaining. You get 1 free edit per month, or unlimited with Premium.")
+    
     ws = await db.worksheets.find_one({"worksheet_id": payload.worksheet_id, "user_id": user.user_id})
     if not ws:
         raise HTTPException(status_code=404, detail="Worksheet not found")
@@ -863,7 +876,9 @@ async def ai_edit_worksheet(payload: AIEditRequest, user: User = Depends(require
         "- Preserve existing structure.\n- Only modify what was requested.\n- OUTPUT MUST BE RAW JSON ONLY."
     )
 
-    edited = await _run_gemini(edit_prompt, ws["level"], model_name=GEMINI_MODEL_PREMIUM)
+    # Use the appropriate model based on their tier
+    config = TIER_CONFIG.get(user.subscription_tier, TIER_CONFIG["free"])
+    edited = await _run_gemini(edit_prompt, ws["level"], model_name=config["model"])
     await db.users.update_one({"user_id": user.user_id}, {"$inc": {"ai_edit_credits": -1}})
 
     new_id  = f"ws_{uuid.uuid4().hex[:12]}"
@@ -1125,7 +1140,7 @@ async def get_tier(user: User = Depends(require_user)):
 @api_router.post("/billing/paypal-capture")
 async def paypal_capture(payload: PayPalCaptureRequest, user: User = Depends(require_user)):
     now = _now()
-    if payload.product_type in ("basic_monthly", "premium_monthly"):
+    if payload.product_type in ("premium_monthly", "pro_monthly"):
         try:
             sub = await verify_paypal_subscription(payload.order_id)
             if sub.get("status") not in ("ACTIVE", "APPROVED"):
@@ -1134,7 +1149,7 @@ async def paypal_capture(payload: PayPalCaptureRequest, user: User = Depends(req
             raise
         except Exception as e:
             raise HTTPException(status_code=400, detail="PayPal verification failed")
-        tier = "basic" if payload.product_type == "basic_monthly" else "premium"
+        tier = "premium" if payload.product_type == "premium_monthly" else "pro"
         await db.users.update_one({"user_id": user.user_id}, {"$set": {
             "subscription_tier": tier, "is_premium": True, "free_used": 0,
             "ai_edit_credits": TIER_CONFIG[tier]["ai_edits_per_month"],
@@ -1155,15 +1170,6 @@ async def paypal_capture(payload: PayPalCaptureRequest, user: User = Depends(req
         return {"status": "success", "credits_added": 10}
     raise HTTPException(status_code=400, detail="Unknown product type")
 
-@api_router.post("/billing/mark-basic")
-async def mark_basic(user: User = Depends(require_user)):
-    await db.users.update_one({"user_id": user.user_id}, {"$set": {
-        "subscription_tier": "basic", "is_premium": True, "free_used": 0,
-        "ai_edit_credits": TIER_CONFIG["basic"]["ai_edits_per_month"],
-        "monthly_reset_at": (_now() + timedelta(days=30)).isoformat()
-    }})
-    return {"status": "basic_activated"}
-
 @api_router.post("/billing/mark-premium")
 async def mark_premium(user: User = Depends(require_user)):
     await db.users.update_one({"user_id": user.user_id}, {"$set": {
@@ -1172,6 +1178,15 @@ async def mark_premium(user: User = Depends(require_user)):
         "monthly_reset_at": (_now() + timedelta(days=30)).isoformat()
     }})
     return {"status": "premium_activated"}
+
+@api_router.post("/billing/mark-pro")
+async def mark_pro(user: User = Depends(require_user)):
+    await db.users.update_one({"user_id": user.user_id}, {"$set": {
+        "subscription_tier": "pro", "is_premium": True, "free_used": 0,
+        "ai_edit_credits": TIER_CONFIG["pro"]["ai_edits_per_month"],
+        "monthly_reset_at": (_now() + timedelta(days=30)).isoformat()
+    }})
+    return {"status": "pro_activated"}
 
 @api_router.post("/billing/downgrade")
 async def downgrade(user: User = Depends(require_user)):
@@ -1195,8 +1210,13 @@ async def paypal_webhook(request: Request):
         if event_type in ("BILLING.SUBSCRIPTION.ACTIVATED", "BILLING.SUBSCRIPTION.PAYMENT.COMPLETED"):
             sub_id    = resource.get("id", "")
             custom_id = resource.get("custom_id") or resource.get("subscriber", {}).get("custom_id", "")
+            plan_id   = resource.get("plan_id", "")
+            
             if custom_id and custom_id.startswith("user_"):
-                tier = "premium" if "premium" in (resource.get("plan_id", "") + custom_id).lower() else "basic"
+                tier = "premium"
+                if plan_id == "P-40482060EU873762GNH7A6YI" or "pro" in custom_id.lower():
+                    tier = "pro"
+                
                 await db.users.update_one({"user_id": custom_id}, {"$set": {
                     "subscription_tier": tier, "is_premium": True, "free_used": 0,
                     "ai_edit_credits": TIER_CONFIG[tier]["ai_edits_per_month"],

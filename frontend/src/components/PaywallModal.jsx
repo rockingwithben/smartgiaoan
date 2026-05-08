@@ -1,41 +1,36 @@
 import React, { useState } from 'react';
 import { useI18n } from '../lib/i18n';
-import { markPremium } from '../lib/api';
+import { capturePayPal } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { toast } from 'sonner';
+import { PayPalButton } from './PayPalButton';
 
 export function PaywallModal({ open, onClose, onWatchAd }) {
   const { t } = useI18n();
   const { refresh } = useAuth();
   
-  // FIX: Added internal state to smoothly transition from the Paywall to the Checkout
   const [view, setView] = useState('paywall'); // 'paywall' | 'checkout'
   const [activating, setActivating] = useState(false);
-  const [hasClickedPayPal, setHasClickedPayPal] = useState(false);
+
+  // Hardcoded from the user's setup
+  const PLAN_PREMIUM = 'P-53940113VL329025BNH7A3UQ';
+  const PLAN_PRO = 'P-40482060EU873762GNH7A6YI';
 
   if (!open) return null;
 
-  const handleActivate = async () => {
-    // Basic friction: Don't let them activate unless they at least clicked the checkout link
-    if (!hasClickedPayPal) {
-      toast.error('Please complete the PayPal checkout first.');
-      return;
-    }
-
+  const handlePayPalSuccess = async (subscriptionID, product_type) => {
     setActivating(true);
     try {
-      // WARNING: This relies on the honor system for MVP. 
-      // Post-launch, this backend endpoint MUST be secured with PayPal Webhooks.
-      await markPremium();
+      await capturePayPal(subscriptionID, product_type);
       await refresh();
-      toast.success('Premium activated! Unlimited worksheets unlocked.');
+      toast.success('Subscription activated! Welcome to the new tier.');
       
-      // Reset state and close
       setView('paywall');
-      setHasClickedPayPal(false);
       onClose();
     } catch (err) {
-      toast.error('Could not activate Premium. Contact support if you have paid.');
+      toast.error('Could not instantly activate. It may take a few minutes for PayPal to verify.');
+      // Close anyway since webhook will eventually catch it
+      onClose();
     } finally {
       setActivating(false);
     }
@@ -43,13 +38,12 @@ export function PaywallModal({ open, onClose, onWatchAd }) {
 
   const handleClose = () => {
     setView('paywall');
-    setHasClickedPayPal(false);
     onClose();
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden transition-all">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden transition-all max-h-[90vh] overflow-y-auto">
         
         {view === 'paywall' ? (
           /* --- VIEW 1: THE PAYWALL --- */
@@ -58,7 +52,7 @@ export function PaywallModal({ open, onClose, onWatchAd }) {
             <h2 className="font-black text-2xl text-gray-900 mb-2">{t('paywall_title') || 'Out of Credits'}</h2>
             <p className="text-gray-500 font-medium text-sm mb-8">{t('paywall_sub') || 'Watch an ad or upgrade to keep generating.'}</p>
             
-            <div className="space-y-3">
+            <div className="max-w-md mx-auto space-y-3">
               <button onClick={() => onWatchAd('short')}
                 className="w-full bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold py-3 rounded-xl transition-colors text-sm">
                 📺 {t('paywall_watch') || 'Watch Ad'} — +1 worksheet
@@ -75,9 +69,8 @@ export function PaywallModal({ open, onClose, onWatchAd }) {
                 </div>
               </div>
               
-              {/* FIX: This button used to just close the modal. Now it triggers the checkout view. */}
               <button onClick={() => setView('checkout')} className="w-full bg-black text-white font-bold py-3 rounded-xl hover:bg-gray-800 transition-colors">
-                {t('paywall_upgrade') || 'Upgrade to Premium'} — £5/month
+                {t('paywall_upgrade') || 'View Upgrade Options'}
               </button>
             </div>
             
@@ -86,53 +79,86 @@ export function PaywallModal({ open, onClose, onWatchAd }) {
             </button>
           </div>
         ) : (
-          /* --- VIEW 2: THE PAYPAL CHECKOUT --- */
-          <div className="p-8 text-center animate-in slide-in-from-right-4 fade-in duration-200">
-            <div className="text-5xl mb-4">👑</div>
-            <h2 className="font-black text-2xl text-gray-900 mb-1">{t('upgrade_modal_title') || 'Unlock Premium'}</h2>
-            <p className="text-gray-500 font-medium text-sm mb-6">{t('upgrade_modal_sub') || 'Unlimited zero-edit worksheets.'}</p>
+          /* --- VIEW 2: THE PAYPAL CHECKOUT (DUAL TIER) --- */
+          <div className="p-8 animate-in slide-in-from-right-4 fade-in duration-200">
+            <div className="text-center mb-8">
+              <h2 className="font-black text-3xl text-gray-900 mb-2">Choose Your Plan</h2>
+              <p className="text-gray-500 font-medium">Select the tier that fits your teaching needs.</p>
+            </div>
 
-            <div className="bg-gray-50 rounded-2xl p-5 mb-6 text-left space-y-2">
-              {['Unlimited worksheets', 'No ads, ever', 'Priority AI generation', 'Full worksheet history', 'PDF export'].map((f) => (
-                <div key={f} className="flex items-center gap-2 text-sm font-bold text-gray-700">
-                  <span className="text-green-500">✓</span> {f}
+            <div className="grid md:grid-cols-2 gap-6">
+              {/* Premium Tier */}
+              <div className="border border-gray-200 rounded-2xl p-6 flex flex-col relative bg-white">
+                <h3 className="font-black text-xl text-gray-900">Premium</h3>
+                <div className="mt-2 mb-4 flex items-baseline gap-1">
+                  <span className="text-3xl font-black">$6</span>
+                  <span className="text-gray-500 font-medium text-sm">/mo</span>
                 </div>
-              ))}
+                <ul className="space-y-3 mb-8 flex-1">
+                  <li className="flex items-start gap-2 text-sm font-medium text-gray-700">
+                    <span className="text-green-500 mt-0.5">✓</span> Unlimited Ad-Free Worksheets
+                  </li>
+                  <li className="flex items-start gap-2 text-sm font-medium text-gray-700">
+                    <span className="text-green-500 mt-0.5">✓</span> PDF Export included
+                  </li>
+                  <li className="flex items-start gap-2 text-sm font-medium text-gray-700">
+                    <span className="text-green-500 mt-0.5">✓</span> Audio & Listening Skill features
+                  </li>
+                </ul>
+                <div className="mt-auto">
+                  {activating ? (
+                    <div className="text-center text-sm font-bold text-gray-500 py-3">Activating...</div>
+                  ) : (
+                    <PayPalButton 
+                      planId={PLAN_PREMIUM} 
+                      onSuccess={(subId) => handlePayPalSuccess(subId, 'premium_monthly')} 
+                    />
+                  )}
+                </div>
+              </div>
+
+              {/* Pro Tier */}
+              <div className="border-2 border-black rounded-2xl p-6 flex flex-col relative bg-gray-50">
+                <div className="absolute top-0 right-0 bg-black text-white text-[10px] font-bold tracking-widest uppercase px-3 py-1 rounded-bl-lg rounded-tr-xl">
+                  Best Value
+                </div>
+                <h3 className="font-black text-xl text-gray-900">Pro Institutional</h3>
+                <div className="mt-2 mb-4 flex items-baseline gap-1">
+                  <span className="text-3xl font-black">$13</span>
+                  <span className="text-gray-500 font-medium text-sm">/mo</span>
+                </div>
+                <ul className="space-y-3 mb-8 flex-1">
+                  <li className="flex items-start gap-2 text-sm font-medium text-gray-700">
+                    <span className="text-green-500 mt-0.5">✓</span> Everything in Premium
+                  </li>
+                  <li className="flex items-start gap-2 text-sm font-medium text-gray-700">
+                    <span className="text-green-500 mt-0.5">✓</span> Custom School Branding (Logos)
+                  </li>
+                  <li className="flex items-start gap-2 text-sm font-medium text-gray-700">
+                    <span className="text-green-500 mt-0.5">✓</span> Auto-Grading Interactive Links
+                  </li>
+                  <li className="flex items-start gap-2 text-sm font-medium text-gray-700">
+                    <span className="text-green-500 mt-0.5">✓</span> Deep AI Output (Flashcards, etc.)
+                  </li>
+                </ul>
+                <div className="mt-auto">
+                  {activating ? (
+                    <div className="text-center text-sm font-bold text-gray-500 py-3">Activating...</div>
+                  ) : (
+                    <PayPalButton 
+                      planId={PLAN_PRO} 
+                      onSuccess={(subId) => handlePayPalSuccess(subId, 'pro_monthly')} 
+                    />
+                  )}
+                </div>
+              </div>
             </div>
 
-            <div className="mb-4">
-              {/* FIX: Require the user to click the link before revealing the activation logic */}
-              <a
-                href="https://www.paypal.com/ncp/payment/KRKWACD47HF7G"
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => setHasClickedPayPal(true)}
-                className="w-full flex items-center justify-center gap-2 bg-yellow-400 hover:bg-yellow-500 text-black font-black py-4 rounded-2xl transition-colors shadow-md"
-              >
-                <img src="https://www.paypalobjects.com/webstatic/icon/pp16.png" alt="PayPal" className="w-5 h-5" />
-                Pay £5/month with PayPal
-              </a>
+            <div className="text-center mt-6">
+              <button onClick={() => setView('paywall')} className="text-sm font-bold text-gray-400 hover:text-gray-600 transition-colors">
+                Go back
+              </button>
             </div>
-
-            <p className="text-xs text-gray-400 font-medium mb-4">
-              {t('after_paypal_note') || 'After completing payment in the new tab, click below to activate your account.'}
-            </p>
-
-            <button 
-              onClick={handleActivate} 
-              disabled={activating || !hasClickedPayPal}
-              className={`w-full font-bold py-3 rounded-xl transition-colors ${
-                hasClickedPayPal && !activating 
-                  ? 'bg-black text-white hover:bg-gray-800' 
-                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-              }`}
-            >
-              {activating ? 'Activating...' : t('activate_premium') || 'I have paid, Activate Premium'}
-            </button>
-            
-            <button onClick={() => setView('paywall')} className="mt-6 w-full text-xs font-bold text-gray-400 hover:text-gray-600 transition-colors">
-              Go back
-            </button>
           </div>
         )}
       </div>

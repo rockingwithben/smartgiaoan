@@ -36,7 +36,7 @@ export default function RewardedAdModal({ tier, onClose, onGranted }) {
     setClaiming(true);
     try {
       const res = await grantRewarded(tier);
-      toast.success(`+${res.credits_granted} credit${res.credits_granted > 1 ? 's' : ''} added!`);
+      toast.success(`+${res.amount} credit${res.amount > 1 ? 's' : ''} added!`);
       onGranted?.(res);
       onClose();
     } catch (e) {
