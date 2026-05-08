@@ -1,1 +1,0 @@
-your_gemini_key_here==>your_gemini_key_here
