@@ -14,3 +14,23 @@ models:
     model: qwen2.5-coder:7b
 
 default_model: Local Coder
+name: Local Config
+version: 1.0.0
+schema: v1
+models:
+  - name: GPT-4.1 Mini
+    provider: openai
+    model: gpt-4.1-mini
+    apiKey: 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
+  - name: Gemini 2.5 Pro
+    provider: gemini
+    model: gemini-2.5-pro-preview-05-06
+    apiKey: your_gemini_key_here
+  - name: GPT-5.2
+    provider: openai
+    model: gpt-5.2
+    apiKey: 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
+    provider: openai
+    model: gpt-5.2
+    apiKey: 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
+defaultModel: GPT-4.1 Mini
