@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { generateWorksheet, listWorksheets, http } from '../lib/api';
 import { toast } from 'sonner';
-import { Loader2, Sparkles, FileText, Crown, Filter, ArrowUpDown } from 'lucide-react'; 
+import { Loader2, Sparkles, FileText, Crown, Filter, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react'; 
 import { PaywallModal } from '../components/PaywallModal';
 import RewardedAdModal from '../components/RewardedAdModal';
 import AdModal from '../components/AdModal';
@@ -11,6 +11,13 @@ import AdModal from '../components/AdModal';
 const LEVELS = ['Kindergarten', 'Primary 1-2', 'Primary 3-4', 'Primary 5-6', 'Secondary', 'IELTS'];
 const CEFR = ['Pre-A1', 'A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 const SKILLS = ['Reading', 'Listening', 'Writing', 'Grammar', 'Vocabulary', 'Speaking'];
+
+// Mobile step wizard configuration
+const FORM_STEPS = [
+  { key: 'level-cefr', title: 'Level & CEFR', fields: ['level', 'cefr'] },
+  { key: 'skill-topic', title: 'Skill & Topic', fields: ['skill', 'topic'] },
+  { key: 'options', title: 'Options', fields: ['num_questions', 'grammar_focus'] },
+];
 
 export default function Dashboard() {
   const { user, loading: authLoading } = useAuth();
@@ -27,6 +34,9 @@ export default function Dashboard() {
   // UX Optimization (Sorting & Filtering)
   const [filterLevel, setFilterLevel] = useState('All');
   const [sortOrder, setSortOrder] = useState('desc');
+  
+  // Mobile step wizard
+  const [mobileStep, setMobileStep] = useState(0);
 
   const [form, setForm] = useState({
     level: 'Primary 3-4',
@@ -80,6 +90,8 @@ export default function Dashboard() {
     e.preventDefault();
     if (!form.topic.trim()) {
       toast.error('Please enter a topic');
+      // On mobile, jump to step 2 where topic field is
+      setMobileStep(1);
       return;
     }
     
@@ -192,42 +204,147 @@ export default function Dashboard() {
 
         <div className="grid lg:grid-cols-3 gap-8">
           <div className="lg:col-span-1">
-            <div className="bg-white rounded-2xl border border-gray-200 p-6 sticky top-4">
+            {/* Desktop: sticky form, Mobile: non-sticky with step wizard */}
+            <div className="bg-white rounded-2xl border border-gray-200 p-6 lg:sticky lg:top-4">
               <h2 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
                 <Sparkles size={18} /> Generate Worksheet
               </h2>
+              
+              {/* Mobile step indicator */}
+              <div className="flex items-center justify-between mb-4 lg:hidden">
+                <div className="flex gap-1.5">
+                  {FORM_STEPS.map((step, idx) => (
+                    <button
+                      key={step.key}
+                      type="button"
+                      onClick={() => setMobileStep(idx)}
+                      className={`h-2 rounded-full transition-all ${
+                        idx === mobileStep 
+                          ? 'w-6 bg-black' 
+                          : idx < mobileStep 
+                            ? 'w-2 bg-green-500' 
+                            : 'w-2 bg-gray-200'
+                      }`}
+                      aria-label={`Go to step ${idx + 1}: ${step.title}`}
+                    />
+                  ))}
+                </div>
+                <span className="text-xs text-gray-500">
+                  {FORM_STEPS[mobileStep].title}
+                </span>
+              </div>
+
               <form onSubmit={handleGenerate} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Level</label>
-                  <select value={form.level} onChange={e => setForm(f => ({ ...f, level: e.target.value }))} className="w-full border border-gray-200 rounded-lg p-2.5 text-sm">
-                    {LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
-                  </select>
+                {/* Step 1: Level & CEFR - always visible on desktop, conditional on mobile */}
+                <div className={`space-y-4 ${mobileStep === 0 ? 'block' : 'hidden lg:block'}`}>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Level</label>
+                    <select 
+                      value={form.level} 
+                      onChange={e => setForm(f => ({ ...f, level: e.target.value }))} 
+                      className="w-full border border-gray-200 rounded-lg p-3.5 text-base min-h-[48px] touch-manipulation"
+                    >
+                      {LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">CEFR</label>
+                    <select 
+                      value={form.cefr} 
+                      onChange={e => setForm(f => ({ ...f, cefr: e.target.value }))} 
+                      className="w-full border border-gray-200 rounded-lg p-3.5 text-base min-h-[48px] touch-manipulation"
+                    >
+                      {CEFR.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">CEFR</label>
-                  <select value={form.cefr} onChange={e => setForm(f => ({ ...f, cefr: e.target.value }))} className="w-full border border-gray-200 rounded-lg p-2.5 text-sm">
-                    {CEFR.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
+
+                {/* Step 2: Skill & Topic */}
+                <div className={`space-y-4 ${mobileStep === 1 ? 'block' : 'hidden lg:block'}`}>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Skill</label>
+                    <select 
+                      value={form.skill} 
+                      onChange={e => setForm(f => ({ ...f, skill: e.target.value }))} 
+                      className="w-full border border-gray-200 rounded-lg p-3.5 text-base min-h-[48px] touch-manipulation"
+                    >
+                      {SKILLS.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Topic</label>
+                    <input 
+                      type="text" 
+                      value={form.topic} 
+                      onChange={e => setForm(f => ({ ...f, topic: e.target.value }))} 
+                      placeholder="e.g. Ordering food at a restaurant" 
+                      className="w-full border border-gray-200 rounded-lg p-3.5 text-base min-h-[48px] touch-manipulation" 
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Skill</label>
-                  <select value={form.skill} onChange={e => setForm(f => ({ ...f, skill: e.target.value }))} className="w-full border border-gray-200 rounded-lg p-2.5 text-sm">
-                    {SKILLS.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
+
+                {/* Step 3: Options */}
+                <div className={`space-y-4 ${mobileStep === 2 ? 'block' : 'hidden lg:block'}`}>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Questions</label>
+                    <input 
+                      type="number" 
+                      min={5} 
+                      max={50} 
+                      value={form.num_questions} 
+                      onChange={e => setForm(f => ({ ...f, num_questions: parseInt(e.target.value) || 24 }))} 
+                      className="w-full border border-gray-200 rounded-lg p-3.5 text-base min-h-[48px] touch-manipulation" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Grammar Focus (optional)</label>
+                    <input 
+                      type="text" 
+                      value={form.grammar_focus} 
+                      onChange={e => setForm(f => ({ ...f, grammar_focus: e.target.value }))} 
+                      placeholder="e.g. Present Perfect" 
+                      className="w-full border border-gray-200 rounded-lg p-3.5 text-base min-h-[48px] touch-manipulation" 
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Topic</label>
-                  <input type="text" value={form.topic} onChange={e => setForm(f => ({ ...f, topic: e.target.value }))} placeholder="e.g. Ordering food at a restaurant" className="w-full border border-gray-200 rounded-lg p-2.5 text-sm" required />
+
+                {/* Mobile navigation buttons */}
+                <div className="flex gap-2 lg:hidden">
+                  {mobileStep > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setMobileStep(s => s - 1)}
+                      className="flex-1 flex items-center justify-center gap-2 border border-gray-200 text-gray-700 py-3.5 rounded-xl font-semibold hover:bg-gray-50 transition min-h-[48px]"
+                    >
+                      <ChevronLeft size={18} /> Back
+                    </button>
+                  )}
+                  {mobileStep < FORM_STEPS.length - 1 ? (
+                    <button
+                      type="button"
+                      onClick={() => setMobileStep(s => s + 1)}
+                      className="flex-1 flex items-center justify-center gap-2 bg-black text-white py-3.5 rounded-xl font-semibold hover:bg-gray-800 transition min-h-[48px]"
+                    >
+                      Next <ChevronRight size={18} />
+                    </button>
+                  ) : (
+                    <button 
+                      type="submit" 
+                      disabled={generating} 
+                      className="flex-1 bg-black text-white py-3.5 rounded-xl font-semibold hover:bg-gray-800 transition disabled:opacity-50 flex items-center justify-center gap-2 min-h-[48px]"
+                    >
+                      {generating && <Loader2 size={18} className="animate-spin" />}
+                      {generating ? loadingText : 'Generate'}
+                    </button>
+                  )}
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Questions</label>
-                  <input type="number" min={5} max={50} value={form.num_questions} onChange={e => setForm(f => ({ ...f, num_questions: parseInt(e.target.value) || 24 }))} className="w-full border border-gray-200 rounded-lg p-2.5 text-sm" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Grammar Focus (optional)</label>
-                  <input type="text" value={form.grammar_focus} onChange={e => setForm(f => ({ ...f, grammar_focus: e.target.value }))} placeholder="e.g. Present Perfect" className="w-full border border-gray-200 rounded-lg p-2.5 text-sm" />
-                </div>
-                <button type="submit" disabled={generating} className="w-full bg-black text-white py-3 rounded-xl font-semibold hover:bg-gray-800 transition disabled:opacity-50 flex items-center justify-center gap-2">
+
+                {/* Desktop submit button */}
+                <button 
+                  type="submit" 
+                  disabled={generating} 
+                  className="hidden lg:flex w-full bg-black text-white py-3.5 rounded-xl font-semibold hover:bg-gray-800 transition disabled:opacity-50 items-center justify-center gap-2 min-h-[48px]"
+                >
                   {generating && <Loader2 size={18} className="animate-spin" />}
                   {generating ? loadingText : 'Generate Worksheet'}
                 </button>
@@ -242,12 +359,12 @@ export default function Dashboard() {
               </h2>
 
               <div className="flex items-center gap-2">
-                <div className="relative flex items-center border border-gray-200 rounded-lg bg-white px-2 py-1.5 shadow-sm">
+                <div className="relative flex items-center border border-gray-200 rounded-lg bg-white px-3 py-2.5 shadow-sm min-h-[44px]">
                   <Filter size={14} className="text-gray-400 mr-2" />
                   <select
                     value={filterLevel}
                     onChange={(e) => setFilterLevel(e.target.value)}
-                    className="bg-transparent text-sm text-gray-700 outline-none cursor-pointer"
+                    className="bg-transparent text-base text-gray-700 outline-none cursor-pointer touch-manipulation"
                   >
                     <option value="All">All Levels</option>
                     {LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
@@ -255,7 +372,7 @@ export default function Dashboard() {
                 </div>
                 <button
                   onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
-                  className="flex items-center gap-2 border border-gray-200 rounded-lg bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 transition shadow-sm"
+                  className="flex items-center gap-2 border border-gray-200 rounded-lg bg-white px-3 py-2.5 text-base text-gray-700 hover:bg-gray-50 transition shadow-sm min-h-[44px] touch-manipulation"
                   title="Sort by Date"
                 >
                   <ArrowUpDown size={14} className="text-gray-400" />
@@ -271,7 +388,11 @@ export default function Dashboard() {
             ) : (
               <div className="space-y-3">
                 {processedWorksheets.map(ws => (
-                  <button key={ws.worksheet_id} onClick={() => navigate(`/worksheet/${ws.worksheet_id}`)} className="w-full bg-white rounded-xl border border-gray-200 p-4 text-left hover:border-indigo-500 hover:shadow-sm transition">
+                  <button 
+                    key={ws.worksheet_id} 
+                    onClick={() => navigate(`/worksheet/${ws.worksheet_id}`)} 
+                    className="w-full bg-white rounded-xl border border-gray-200 p-4 text-left hover:border-indigo-500 hover:shadow-sm transition min-h-[72px] touch-manipulation"
+                  >
                     <div className="flex items-center justify-between">
                       <div>
                         <h3 className="font-semibold text-gray-900">{ws.title}</h3>
