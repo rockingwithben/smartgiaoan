@@ -1112,18 +1112,19 @@ async def generate_lesson_plan(payload: LessonPlanRequest, user: User = Depends(
     if user.free_used + total_cost > config["monthly_quota"] + user.bonus_credits:
         raise HTTPException(status_code=402, detail=f"Need {total_cost} credits. Upgrade or reduce weeks.")
 
-    prompt = (
-        f"You are a senior Cambridge ESOL curriculum designer for Vietnamese learners.\n\n"
-        f"Create a {payload.duration_weeks}-week unit plan for {payload.level} (CEFR {payload.cefr}) students.\n"
-        f"Topic: \'{payload.topic}\'\nLessons per week: {payload.lessons_per_week}\n\n"
-        "For EACH lesson provide: lesson_title, lesson_type, duration_minutes, "
-        "learning_objectives (array), worksheet_content (full JSON), homework_task, materials_needed.\n\n"
-        "Also include: unit_title, unit_overview, assessment_criteria, "
-        "suggested_extensions_for_advanced_learners, suggested_support_for_weak_learners.\n\n"
-        "Rules:\n- Vietnamese names: Minh, Lan, Huy, Trang, Nam, Linh, Duc, Mai, Khoa, Phuong.\n"
-        "- Vietnamese locations and culture throughout.\n- OUTPUT MUST BE RAW VALID JSON ONLY.\n"
-        "- Structure: {"unit_title": "...", "weeks": [{"week_number": 1, "lessons": [...]}]}\""
-    )
+   prompt = (
+                f"You are a senior Cambridge ESOL curriculum designer for Vietnamese learners.\n\n"
+                f"Create a {payload.duration_weeks}-week unit plan for {payload.level} (CEFR {payload.cefr}) students.\n"
+                f"Topic: '{payload.topic}'\nLessons per week: {payload.lessons_per_week}\n\n"
+                "For EACH lesson provide: lesson_title, lesson_type, duration_minutes, "
+                "learning_objectives (array), worksheet_content (full JSON), homework_task, materials_needed.\n\n"
+                "Also include: unit_title, unit_overview, assessment_criteria, "
+                "suggested_extensions_for_advanced_learners, suggested_support_for_weak_learners.\n\n"
+                "Rules:\n- Vietnamese names: Minh, Lan, Huy, Trang, Nam, Linh, Duc, Mai, Khoa, Phuong.\n"
+                "- Vietnamese locations and culture throughout.\n- OUTPUT MUST BE RAW VALID JSON ONLY.\n"
+                '- Structure: {"unit_title": "...", "weeks": [{"week_number": 1, "lessons": [...]}]}'
+            )
+
 
     plan_data = await _run_gemini(prompt, payload.level, model_name=GEMINI_MODEL_PREMIUM)
     plan_id   = f"lp_{uuid.uuid4().hex[:12]}"
