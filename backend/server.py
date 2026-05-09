@@ -1122,7 +1122,7 @@ async def generate_lesson_plan(payload: LessonPlanRequest, user: User = Depends(
         "suggested_extensions_for_advanced_learners, suggested_support_for_weak_learners.\n\n"
         "Rules:\n- Vietnamese names: Minh, Lan, Huy, Trang, Nam, Linh, Duc, Mai, Khoa, Phuong.\n"
         "- Vietnamese locations and culture throughout.\n- OUTPUT MUST BE RAW VALID JSON ONLY.\n"
-        '- Structure: {"unit_title": "...", "weeks": [{"week_number": 1, "lessons": [...]}]}\'
+        "- Structure: {"unit_title": "...", "weeks": [{"week_number": 1, "lessons": [...]}]}\""
     )
 
     plan_data = await _run_gemini(prompt, payload.level, model_name=GEMINI_MODEL_PREMIUM)
