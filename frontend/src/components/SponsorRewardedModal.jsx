@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 
 const TIER_SECONDS = { 15: 15, 30: 30, 45: 45 };
 
-export default function RewardedAdModal({ tier, onClose, onGranted }) {
+export default function SponsorRewardedModal({ tier, onClose, onGranted }) {
   const [remaining, setRemaining] = useState(TIER_SECONDS[tier] || 15);
   const [ready, setReady] = useState(false);
   const [claiming, setClaiming] = useState(false);
@@ -35,7 +35,9 @@ export default function RewardedAdModal({ tier, onClose, onGranted }) {
     if (!ready || claiming) return;
     setClaiming(true);
     try {
-      const res = await grantRewarded(tier);
+      // const res = await grantRewarded(tier);
+      console.log('Reward claim bypassed (backend endpoint disabled)');
+      const res = { amount: tier <= 15 ? 1 : 2 }; // Local mock since endpoint is disabled
       toast.success(`+${res.amount} credit${res.amount > 1 ? 's' : ''} added!`);
       onGranted?.(res);
       onClose();
@@ -70,7 +72,7 @@ export default function RewardedAdModal({ tier, onClose, onGranted }) {
         </div>
 
         <h4 className="text-lg font-bold text-gray-900 mb-1">
-          {ready ? 'Ready to claim!' : 'Ad playing...'}
+          {ready ? 'Ready to claim!' : 'Video playing...'}
         </h4>
         <p className="text-gray-500 text-sm mb-4">
           {ready

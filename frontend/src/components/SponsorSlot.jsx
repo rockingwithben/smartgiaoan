@@ -2,7 +2,7 @@ import React from 'react';
 
 import { useEffect } from 'react';
 
-export function AdSlot({ size = 'sidebar', label = 'Sponsored', testId }) {
+export function SponsorSlot({ size = 'sidebar', label = 'Sponsored', testId }) {
   useEffect(() => {
     try {
       (window.adsbygoogle = window.adsbygoogle || []).push({});
@@ -17,8 +17,8 @@ export function AdSlot({ size = 'sidebar', label = 'Sponsored', testId }) {
     inline: 'min-h-[120px] w-full',
   };
   return (
-    <div className={`ad-slot ${sizes[size]} p-4 flex flex-col`} data-testid={testId || `ad-slot-${size}`}>
-      <span className="ad-slot-label mb-2 text-xs text-gray-400 uppercase tracking-wider">{label}</span>
+    <div className={`sponsor-slot ${sizes[size]} p-4 flex flex-col`} data-testid={testId || `sponsor-slot-${size}`}>
+      <span className="sponsor-slot-label mb-2 text-xs text-gray-400 uppercase tracking-wider">{label}</span>
       <div className="flex-1 w-full bg-gray-50 flex items-center justify-center overflow-hidden">
         <ins 
           className="adsbygoogle"

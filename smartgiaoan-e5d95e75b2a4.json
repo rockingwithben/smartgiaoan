@@ -1,0 +1,15 @@
+{
+  "type": "service_account",
+  "project_id": "smartgiaoan",
+  "private_key_id": "e5d95e75b2a4b749031d79bf46cd0d5f2302e8e3",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEuwIBADANBgkqhkiG9w0BAQEFAASCBKUwggShAgEAAoIBAQC//AVTxrw/pHV9\nJ2nBdgbw4g1T5GFuIvhpTRqRT3drRaTfh/6JwiNn+xEBtmjEZL0aWp9wqG0cC26D\nVky8Hkhev4UcfSDBfmR67+3kPKySsfQCCq6A4tdnwIswKCXiOrTOnWpn3aIUg5bn\nuo8tjwJ6wCT9lGVGUB3rsTwSayDy9x9ZUKhBNtqvTOTm56fjrPJfuJJgoTZRqmjL\nnU1kEet0fQcmXC+Vbqy5PlX1TA/rYya+Xb3q3Xpah5SBweku9yP+uFIc8/AkQepp\nihFURgQw6U9Nt++mXS+Zch3b4tEOAvuIfoTIl+gXdrwaEQ5qqKfu9tfSXNyhyjfW\npHcqVpsTAgMBAAECgf8b+Ok0Mg1u0gd/gYtnJLGrAN5Wp6MkHCd7/QzIUn76O96w\nTKBJpUyDWffTlNniKf6WvtCvf9rMVN4SEZqDAYAjgSqXFaQwJrpJ/BHG4qnb6RG+
+BzbMKkEFKbvqyFUjITdqFoWEAxO0HKtgGBteB/g66l2slNj5f0x2V6lPbBlHTRK8\npCSU/0p0egsRbhsB7saVFkhUl6KUTJVuJ7LD5GtJlzRRmR4z6KY2dzF2cHueB0jv\n2yYytlFyog1R6CzrmGq9nvHiT0Kuh93fL4hNgY4bR1IqAin2HvGJhE9AKByPjMVX\nBb7MqVHlLJzX9hMjA25HyrfdQx493m6fF+tAQ70CgYEA/s0ukVFsjYanBn+sdfMT\nl1Q7X5oJRan9R5JUKKYpe6cKT95qzLsK5qUcKT76Cb70MOP3MO3HzPKYIuhTMl+L\nT6CQEwGNddbV/h7NTEDT4z5Z9OWHdgE3jm8oNsfhj9aCx5/mvEaVfr8OtrvRDeXc\nOjjDEGArvX2Vn7RD3crsxFUCgYEAwOMys0KPdqqWGG72vmDk92yETWwrvLBdFVqm\nSaoRuWDxDmFR5/6U1QetdUTaSmrPt6KG5zaQlwgvRf9KXsYDQI9QJw1Mxzrze7eB\nB7qlNMOojvYOpyZH6YR4QIYqsaei/RKBPFjIoIybcP+3TAdIMKvAfEA5emV+5cFu\nDF7XCccCgYA/6sibu4k3l2eewbhJfkiT1ZVvTfy1dQcMRTDHYadWVXjIwEqaQPFj\nGlgOILYoa7Zl7Um9BFjkmJaBazYzlLQlrWl22xTZUqMrtB5b2odMof9+53UrrPJ6\n0HeOBmYW5wC3gu0mna4ytUrDnCm9CsRL9qE4ImfWiQJXpajAon7yYQKBgQC+z0I1\nYK/I5QFsFEEUnYeDV58dc9dkZlb+q9j54Dp+Vu6/mfhLdmVGw7yM2FrU6QqojyfC\njBDGx3r0VJH+ZQWMlPjmWNrN73wzs5j5y2JoavFQ0wo1wcG7uKa4tcCAU+QBU4/y\n4aU+ZTnTs7Ngi4eXViApCeOSN9srb4jsxdkVuwKBgHHQ+a3CGqFbLQK3pIKL/XtQ\n/21b/tnbpGtAw1zu4U+xJhGC4cysMvdiAQ0xQNDwqDTd7nxsJgqEM0UldpdniBAA\nF+yXtA8vqol7dWPJwYqRJtvrRPxA545D9i9cSicVN2mA4kZlKn/MS/K2deEaWYxK\nBpdrGkj6At107Zarasl2\n-----END PRIVATE KEY-----
+",
+  "client_email": "vertex-ai-caller@smartgiaoan.iam.gserviceaccount.com",
+  "client_id": "107143807238509731814",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/vertex-ai-caller%40smartgiaoan.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}

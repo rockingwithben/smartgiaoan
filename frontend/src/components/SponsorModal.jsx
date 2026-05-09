@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, PlayCircle, Clock } from 'lucide-react';
 import { http } from '../lib/api';
 
-export default function AdModal({ isOpen, duration, onComplete, onClose }) {
+export default function SponsorModal({ isOpen, duration, onComplete, onClose }) {
   const [timeLeft, setTimeLeft] = useState(duration);
   const [canSkip, setCanSkip] = useState(false);
 

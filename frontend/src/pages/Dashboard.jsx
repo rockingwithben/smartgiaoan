@@ -5,8 +5,8 @@ import { generateWorksheet, listWorksheets, http } from '../lib/api';
 import { toast } from 'sonner';
 import { Loader2, Sparkles, FileText, Crown, Filter, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react'; 
 import { PaywallModal } from '../components/PaywallModal';
-import RewardedAdModal from '../components/RewardedAdModal';
-import AdModal from '../components/AdModal';
+import SponsorRewardedModal from '../components/SponsorRewardedModal';
+import SponsorModal from '../components/SponsorModal';
 
 const LEVELS = ['Kindergarten', 'Primary 1-2', 'Primary 3-4', 'Primary 5-6', 'Secondary', 'IELTS'];
 const CEFR = ['Pre-A1', 'A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
@@ -26,9 +26,9 @@ export default function Dashboard() {
   const [generating, setGenerating] = useState(false);
   const [loadingText, setLoadingText] = useState('Generate Worksheet');
   const [showPaywall, setShowPaywall] = useState(false);
-  const [showAd, setShowAd] = useState(false);
-  const [adDuration, setAdDuration] = useState(0);
-  const [adTier, setAdTier] = useState(15);
+  const [showSponsor, setShowSponsor] = useState(false);
+  const [sponsorDuration, setSponsorDuration] = useState(0);
+  const [sponsorTier, setSponsorTier] = useState(15);
   const [tierInfo, setTierInfo] = useState(null);
   
   // UX Optimization (Sorting & Filtering)
@@ -125,8 +125,8 @@ export default function Dashboard() {
       
       // Check if server wants us to show an ad (free tier random injection)
       if (ws.show_ad) {
-        setAdDuration(ws.ad_duration);
-        setShowAd(true);
+        setSponsorDuration(ws.ad_duration);
+        setShowSponsor(true);
         setGenerating(false);
         setLoadingText('Generate Worksheet');
         return; // Don't navigate yet — AdModal will call onComplete
@@ -148,19 +148,19 @@ export default function Dashboard() {
     }
   };
 
-  const handleAdComplete = () => {
-    setShowAd(false);
+  const handleSponsorComplete = () => {
+    setShowSponsor(false);
     loadWorksheets(); // Refresh to show new worksheet
-    toast.success('Ad complete! +1 worksheet credit.');
+    toast.success('Sponsor video complete! +1 worksheet credit.');
   };
 
-  const handleWatchAd = (tier) => {
-    setAdTier({ short: 15, medium: 30, long: 45 }[tier] || tier);
+  const handleWatchSponsor = (tier) => {
+    setSponsorTier({ short: 15, medium: 30, long: 45 }[tier] || tier);
     setShowPaywall(false);
-    setShowAd(true);
+    setShowSponsor(true);
   };
 
-  const handleAdGranted = () => {
+  const handleSponsorGranted = () => {
     window.location.reload();
   };
 
@@ -450,22 +450,22 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Random Ad Modal (from server) */}
-      <AdModal 
-        isOpen={showAd} 
-        duration={adDuration} 
-        onComplete={handleAdComplete}
+      {/* Random Sponsor Modal (from server) */}
+      <SponsorModal 
+        isOpen={showSponsor} 
+        duration={sponsorDuration} 
+        onComplete={handleSponsorComplete}
         onClose={() => {
-          setShowAd(false);
+          setShowSponsor(false);
           setGenerating(false);
         }}
       />
 
       {/* Legacy Paywall for out-of-credit scenarios */}
-      <PaywallModal open={showPaywall} onClose={() => setShowPaywall(false)} onWatchAd={handleWatchAd} />
+      <PaywallModal open={showPaywall} onClose={() => setShowPaywall(false)} onWatchAd={handleWatchSponsor} />
       
-      {/* Legacy Rewarded Ad Modal */}
-      {showAd && adDuration === 0 && <RewardedAdModal tier={adTier} onClose={() => setShowAd(false)} onGranted={handleAdGranted} />}
+      {/* Legacy Rewarded Sponsor Modal */}
+      {showSponsor && sponsorDuration === 0 && <SponsorRewardedModal tier={sponsorTier} onClose={() => setShowSponsor(false)} onGranted={handleSponsorGranted} />}
     </div>
   );
 }

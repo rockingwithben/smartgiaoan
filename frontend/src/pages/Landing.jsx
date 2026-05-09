@@ -4,7 +4,7 @@ import { useI18n } from '../lib/i18n';
 import { useAuth } from '../lib/auth';
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
-import { AdSlot } from '../components/AdSlot';
+import { SponsorSlot } from '../components/SponsorSlot';
 import { LEVELS, SKILLS } from '../lib/catalog';
 import { wakeUpServer } from '../lib/api';
 
@@ -268,12 +268,12 @@ export default function Landing() {
               </figure>
             ))}
           </div>
-          <p className="mt-8 text-xs text-muted-foreground italic">First names &amp; neighbourhood used with permission. Some details lightly anonymised.</p>
+          <p className="mt-8 text-xs text-muted-foreground italic">First names & neighbourhood used with permission. Some details lightly anonymised.</p>
         </section>
 
-        {/* ============ AD slot ============ */}
+        {/* ============ Sponsor slot ============ */}
         <section className="max-w-7xl mx-auto px-6 lg:px-10 py-10">
-          <AdSlot size="leaderboard" testId="landing-ad-leaderboard" />
+          <SponsorSlot size="leaderboard" testId="landing-sponsor-leaderboard" />
         </section>
 
         {/* ============ PRICING ============ */}
@@ -284,7 +284,7 @@ export default function Landing() {
               <h2 className="font-display text-4xl lg:text-5xl mt-2">Three free. Five quid a month after.</h2>
             </div>
             <div className="md:col-span-6 text-muted-foreground leading-relaxed">
-              Three worksheets to fall in love. £5 a month if you stay. Cancel any time in PayPal — no contract, no haggling. Earn extra free credits by watching short rewarded ads (15 / 30 / 45 seconds = 1 / 2 / 3 credits).
+              Three worksheets to fall in love. £5 a month if you stay. Cancel any time in PayPal — no contract, no haggling. Earn extra free credits by watching short sponsor videos (15 / 30 / 45 seconds = 1 / 2 / 3 credits).
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -294,8 +294,8 @@ export default function Landing() {
               <p className="mt-3 text-sm text-muted-foreground">{t('free_desc')}</p>
               <ul className="mt-6 space-y-2 text-sm">
                 <li>• 3 worksheets included</li>
-                <li>• Earn more via 15/30/45s rewarded ads</li>
-                <li>• Clean ad placements</li>
+                <li>• Earn more via 15/30/45s sponsor videos</li>
+                <li>• Clean sponsor placements</li>
                 <li>• PDF & Print included</li>
               </ul>
               <button onClick={user ? null : startLogin} className="mt-8 btn-secondary w-full" data-testid="plan-free-cta">{t('free_cta')}</button>

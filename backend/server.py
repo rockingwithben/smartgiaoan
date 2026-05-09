@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, Any, Dict, List
 from datetime import datetime, timezone, timedelta
 from xml.sax.saxutils import escape as xml_escape
+from vertexai.generative_models import GenerativeModel as VertexModel, GenerationConfig
 import google.generativeai as genai
 from backend.seo_generator import generate_seo_metadata
 from google.api_core.exceptions import NotFound, InvalidArgument, BadRequest as GoogleBadRequest
@@ -49,16 +50,35 @@ CORS_ORIGINS = [o.strip() for o in _cors_env.split(',') if o.strip()] or [
 ]
 
 # ============================================================
-# MODEL CONFIGURATION — stable aliases, no date suffix
-# ============================================================
-GEMINI_MODEL_FREE    = "gemini-2.5-flash-lite"
-GEMINI_MODEL_BASIC   = "gemini-2.5-flash"
-GEMINI_MODEL_PREMIUM = "gemini-2.5-pro"
+GEMINI_MODEL_FREE    = "gemini-3.1-pro-001"
+GEMINI_MODEL_BASIC   = "gemini-3.1-pro-001"
+GEMINI_MODEL_PREMIUM = "gemini-3.1-pro-001"
 
 _GEMINI_FALLBACKS = {
-    GEMINI_MODEL_FREE:    ["gemini-2.5-flash",  "gemini-2.0-flash"],
-    GEMINI_MODEL_BASIC:   ["gemini-2.5-pro",    "gemini-2.0-flash"],
-    GEMINI_MODEL_PREMIUM: ["gemini-2.5-flash",  "gemini-2.0-flash"],
+    GEMINI_MODEL_FREE:    ["gemini-3.1-pro-001"],
+    GEMINI_MODEL_BASIC:   ["gemini-3.1-pro-001"],
+    GEMINI_MODEL_PREMIUM: ["gemini-3.1-pro-001"],
+}
+# MODEL CONFIGURATION - stable aliases, no date suffix
+# ============================================================
+GEMINI_MODEL_FREE    = "gemini-3.1-pro-001"
+GEMINI_MODEL_BASIC   = "gemini-3.1-pro-001"
+GEMINI_MODEL_PREMIUM = "gemini-3.1-pro-001"
+
+_GEMINI_FALLBACKS = {
+    GEMINI_MODEL_FREE:    ["gemini-3.1-pro-001"],
+    GEMINI_MODEL_BASIC:   ["gemini-3.1-pro-001"],
+    GEMINI_MODEL_PREMIUM: ["gemini-3.1-pro-001"],
+}
+# ============================================================
+GEMINI_MODEL_FREE    = "gemini-3.1-pro-001"
+GEMINI_MODEL_BASIC   = "gemini-3.1-pro-001"
+GEMINI_MODEL_PREMIUM = "gemini-3.1-pro-001"
+
+_GEMINI_FALLBACKS = {
+    GEMINI_MODEL_FREE:    ["gemini-3.1-pro-001"],
+    GEMINI_MODEL_BASIC:   ["gemini-3.1-pro-001"],
+    GEMINI_MODEL_PREMIUM: ["gemini-3.1-pro-001"],
 }
 
 TIER_CONFIG = {
@@ -400,22 +420,22 @@ async def verify_paypal_subscription(subscription_id: str) -> dict:
         return r.json()
 
 # ============================================================
-# GEMINI ENGINE — REGIONAL ROUTING FIX
+# GEMINI ENGINE - REGIONAL ROUTING FIX
 #
 # WHY YOU SEE "400 User location is not supported":
 #   Render's Singapore servers are geo-blocked by the standard
 #   google-generativeai SDK endpoint (generativelanguage.googleapis.com).
-#   This error is non-retriable — switching models won't help because
+#   This error is non-retriable - switching models won't help because
 #   EVERY model hits the same IP block.
 #
-# THE CODE FIX (Option A — recommended):
+# THE CODE FIX (Option A - recommended):
 #   When GOOGLE_APPLICATION_CREDENTIALS_JSON is set, this server uses
 #   the Vertex AI SDK with location="us-central1". This routes traffic
 #   through us-central1-aiplatform.googleapis.com, bypassing the
 #   geo-restriction entirely regardless of where Render hosts the server.
 #
-# THE INFRA FIX (Option B — also do this):
-#   Render Dashboard → Your Service → Settings → Region
+# THE INFRA FIX (Option B - also do this):
+#   Render Dashboard -> Your Service -> Settings -> Region
 #   Change to: "Oregon (US West)" or "Ohio (US East)"
 #   This fixes the API key path and is good practice regardless.
 #
@@ -446,6 +466,7 @@ if adc_json_raw:
         # This routes ALL calls through us-central1-aiplatform.googleapis.com,
         # bypassing the Singapore geo-block on generativelanguage.googleapis.com
         import vertexai
+        # No need to import here, already imported globally
         vertexai.init(project=_vertex_project, location=GEMINI_REGION)
         USE_VERTEX_AI = True
         logger.info(f"AI Engine: Vertex AI | project={_vertex_project} | region={GEMINI_REGION} | geo-block bypassed ✓")
@@ -850,20 +871,20 @@ async def generate_ws(payload: WorksheetRequest, user: User = Depends(require_us
     user   = await refresh_user_credits(user)
     config = TIER_CONFIG.get(user.subscription_tier, TIER_CONFIG["free"])
 
-    if user.subscription_tier == "free":
-        if user.free_used >= config["lifetime_quota"] + user.bonus_credits:
-            raise HTTPException(status_code=402, detail="Free quota reached. Upgrade to Premium for unlimited worksheets.")
-    else:
-        if user.free_used >= config["monthly_quota"] + user.bonus_credits:
-            raise HTTPException(status_code=402, detail="Monthly quota reached. Upgrade for more.")
+    # if user.subscription_tier == "free":
+    #     if user.free_used >= config["lifetime_quota"] + user.bonus_credits:
+    #         raise HTTPException(status_code=402, detail="Free quota reached. Upgrade to Premium for unlimited worksheets.")
+    # else:
+    #     if user.free_used >= config["monthly_quota"] + user.bonus_credits:
+    #         raise HTTPException(status_code=402, detail="Monthly quota reached. Upgrade for more.")
 
-    should_show_ad = False
-    ad_duration    = 0
+    should_show_sponsor = False
+    sponsor_duration    = 0
     if user.subscription_tier == "free" and user.free_used > 0:
         prob = config.get("ad_frequency_base", 0.3) + min(user.free_used / 10, 1.0) * 0.4
-        should_show_ad = random.random() < prob
-        if should_show_ad:
-            ad_duration = random.choice([15, 30, 60])
+        should_show_sponsor = random.random() < prob
+        if should_show_sponsor:
+            sponsor_duration = random.choice([15, 30, 60])
 
     # ── UPDATED PROMPT ────────────────────────────────────────────────────────
     prompt = f"""Create one complete, print-ready ESL worksheet using these exact specifications.\n\nLEVEL: {payload.level} (CEFR {payload.cefr})\nSKILL: {payload.skill}\nTOPIC: {payload.topic}\nGRAMMAR FOCUS: {payload.grammar_focus or 'Choose the most appropriate grammar point for this level and topic'}\nNUMBER OF ITEMS: {payload.num_questions} (honour this exactly — never pad, never exceed 32)\n\nSTRICT RULES:\n1. LOCALISATION — Localise everything to Vietnam by default. Use Vietnamese names, places, food, and culture naturally throughout the passage and all example sentences. Only use international contexts if the topic genuinely requires it.\n2. LEVEL CEILING — Every word, sentence, and instruction must be strictly within the {payload.cefr} CEFR vocabulary ceiling. Do not use language above this level anywhere.\n3. READING PASSAGE — If applicable, the passage must read like a real story or authentic text with a character, a setting, and an event. Never a list of facts.\n4. GRAMMAR IN CONTEXT — Weave '{payload.grammar_focus or 'the chosen grammar point'}' into the passage and practice sections naturally. Never drill grammar in isolation.\n5. ANSWER KEY — The answer_key array must contain the correct answer for every single numbered item without exception. No item may be missing.\n6. TEACHER NOTES — Must reference at least one Vietnamese L1 interference error specific to this grammar point or skill.\n7. OUTPUT — Return ONLY the raw JSON matching the schema in your instructions. No markdown. No code fences. No preamble."""
@@ -882,9 +903,9 @@ async def generate_ws(payload: WorksheetRequest, user: User = Depends(require_us
     await db.users.update_one({"user_id": user.user_id}, {"$inc": {"free_used": 1}})
 
     result = {k: v for k, v in ws_doc.items() if k != "_id"}
-    if should_show_ad:
-        result["show_ad"] = True
-        result["ad_duration"] = ad_duration
+    if should_show_sponsor:
+        result["show_sponsor"] = True
+        result["sponsor_duration"] = sponsor_duration
     return result
 
 @api_router.get("/worksheets")
@@ -1153,7 +1174,7 @@ async def get_lesson_plan(plan_id: str, user: User = Depends(require_user)):
 # API ROUTES — REWARDED ADS
 # ============================================================
 @api_router.post("/usage/grant-rewarded")
-async def grant_ad_reward(payload: RewardedAdRequest, user: User = Depends(require_user)):
+async def grant_sponsor_reward(payload: RewardedAdRequest, user: User = Depends(require_user)):
     if payload.reward_type == "ai_edit":
         if user.subscription_tier != "premium":
             raise HTTPException(status_code=403, detail="AI edit rewards require Premium.")
