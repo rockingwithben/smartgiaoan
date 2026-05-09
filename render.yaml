@@ -5,6 +5,7 @@ services:
     region: oregon
     plan: free
     rootDir: backend
+    buildCommand: pip install -r requirements.txt
     startCommand: ./start.sh
     envVars:
       - key: PYTHON_VERSION
