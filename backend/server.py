@@ -110,6 +110,54 @@ TIER_CONFIG = {
 }
 
 # ============================================================
+# 🗺️ SMARTGIAOAN LOCALIZATION VAULT (v2.8)
+# ============================================================
+# These lists feed the Dynamic Game Director. They are injected into the AI
+# system prompt so every worksheet feels locally relevant to Vietnamese kids.
+# We use random.sample() at prompt-build time so no two worksheets are identical.
+
+VIETNAM_CITIES = [
+    "Hanoi", "Hai Phong", "Ha Long", "Sapa", "Ninh Binh",
+    "Dien Bien", "Ha Giang", "Da Nang", "Hue", "Hoi An",
+    "Nha Trang", "Da Lat", "Quy Nhon", "Dong Hoi",
+    "Ho Chi Minh City", "Vung Tau", "Mui Ne", "Phu Quoc",
+    "Can Tho", "Ben Tre"
+]
+
+VIETNAM_LANDMARKS = [
+    "Ha Long Bay", "Fansipan", "Phong Nha Caves", "Mekong Delta",
+    "Hoan Kiem Lake", "Temple of Literature", "Dragon Bridge",
+    "Golden Bridge", "Ben Thanh Market", "Notre Dame Cathedral",
+    "Landmark 81", "Cu Chi Tunnels", "the local street market",
+    "the neighborhood pagoda", "the rice paddies"
+]
+
+VIETNAM_FOODS = [
+    "Pho", "Banh Mi", "Bun Cha", "Spring Rolls", "Banh Xeo",
+    "Egg Coffee", "Iced Milk Coffee", "dragonfruit",
+    "rambutan", "mango"
+]
+
+# The Activity Vault for the Dynamic Game Director.
+# The AI is instructed to pick 3-4 DIFFERENT types from this list every time.
+# DO NOT let the AI fall back to a static "Vocab + Grammar + Writing" formula.
+ACTIVITY_VAULT = [
+    "Code Breaker (substitution cipher or number-to-letter puzzle)",
+    "Detective Story (fill-in-the-blank narrative with clues)",
+    "Drawing Prompt (read and draw, or label-and-color)",
+    "Categorization (sort words into buckets: food, place, animal, etc.)",
+    "Matching (draw lines between columns: word-to-picture or word-to-definition)",
+    "True or False (reading comprehension statements)",
+    "Word Scramble (unscramble letters to form target vocabulary)",
+    "Crossword (simple grid with picture clues for younger kids)",
+    "Missing Letter (fill in the blank: b_n_n_ for 'banana')",
+    "Odd One Out (circle the word that doesn't belong)",
+    "Dialogue Completion (finish the speech bubbles)",
+    "Word Search (small 8x8 grid with 5-6 hidden words)",
+    "Picture Description (look at the image and write 2-3 sentences)"
+]
+
+# ============================================================
 # MONGODB
 # ============================================================
 mongo_url = os.environ.get('MONGO_URL', '')
@@ -517,7 +565,68 @@ def _build_model(model_name: str, system_instruction: str):
     )
 
 
-def build_system_prompt(level: str, skill: str = "") -> str:
+def build_system_prompt(level: str, skill: str = "", topic: str = "", num_questions: int = 24) -> str:
+    """
+    Builds the Gemini system prompt for worksheet generation.
+
+    CRITICAL: This function uses random.sample() to inject localized Vietnamese
+    content every single time. This guarantees unpredictability.
+
+    Args:
+        level: 'Kindergarten', 'Primary', 'Secondary', or 'IELTS'.
+        skill: The skill focus (reading, writing, grammar, vocabulary, listening, mixed).
+        topic: The user's requested topic (e.g., 'Animals', 'Daily Routines').
+        num_questions: Requested number of items (used as a soft hint only for K/Primary).
+
+    Returns:
+        A fully formatted system prompt string.
+    """
+
+    # -------------------------------------------------------------------------
+    # 1. DYNAMIC INJECTION: Pick fresh random samples for THIS worksheet.
+    # -------------------------------------------------------------------------
+    selected_cities     = random.sample(VIETNAM_CITIES,     k=2)
+    selected_landmarks  = random.sample(VIETNAM_LANDMARKS,  k=2)
+    selected_foods      = random.sample(VIETNAM_FOODS,      k=3)
+    selected_activities = random.sample(ACTIVITY_VAULT,     k=4)  # The Director's pick
+
+    # Build a human-readable string of the selected activities for the prompt
+    activity_directive = "\n".join(
+        f"    {i+1}. {act}" for i, act in enumerate(selected_activities)
+    )
+
+    # -------------------------------------------------------------------------
+    # 2. FORMATTING RULES: Kindergarten/Primary vs. Secondary/IELTS
+    # -------------------------------------------------------------------------
+    # We use a conditional block because the rules are fundamentally different.
+
+    if level in ("Kindergarten", "Primary"):
+        # K / PRIMARY EXEMPTION: No 3-Page Rule. Spacious 1-to-2 pages max.
+        formatting_rules = f"""
+FORMAT RULES (Kindergarten / Primary — MANDATORY):
+- You are generating a worksheet for YOUNG LEARNERS (ages 4-11).
+- STRICTLY DISABLE the 3-Page Rule. Do NOT force Reading + Vocab + Grammar + Writing sections.
+- The entire document MUST fit comfortably on 1 to 2 A4 pages. White space is your friend.
+- Use LARGE, friendly fonts. Short sentences. Lots of visual breathing room.
+- Every activity must be achievable with a pencil and crayons; no essay writing.
+- If you include a reading passage, keep it under 40 words for Kindergarten, under 80 for Primary.
+- NUMBER OF ITEMS: {num_questions} (honour this exactly — never pad, never exceed 32)
+- Kindergarten: count tasks, not questions. 6-10 tasks = full worksheet.
+"""
+    else:
+        # SECONDARY / IELTS: Keep the strict 3-Page pedagogical structure.
+        formatting_rules = f"""
+FORMAT RULES (Secondary / IELTS — MANDATORY):
+- You MUST follow the strict 3-Page Rule:
+    Page 1: Reading Comprehension (passage + questions)
+    Page 2: Vocabulary & Grammar (exercises based on the reading)
+    Page 3: Writing Task (structured output: essay, letter, or long-form response)
+- The tone is academic and age-appropriate for teenagers or adult test-takers.
+- NUMBER OF ITEMS: {num_questions} (honour this exactly — never pad, never exceed 32)
+- IELTS: one full passage + question set (15-20 items) is one complete worksheet.
+"""
+
+    # Listening-specific rule
     listening_rule = (
         "LISTENING WORKSHEET RULE: You MUST include a listening_script field at the top level "
         "of the JSON. This is the full text of the audio track the teacher will read aloud. "
@@ -525,86 +634,55 @@ def build_system_prompt(level: str, skill: str = "") -> str:
         if skill and skill.lower() == "listening" else ""
     )
 
-    return f"""You are a senior Cambridge ESOL examiner and ESL curriculum specialist with 25 years of experience. You design print-ready worksheets for Vietnamese learners from Pre-A1 Kindergarten through C2/IELTS.
+    # -------------------------------------------------------------------------
+    # 3. THE MASTER PROMPT
+    # -------------------------------------------------------------------------
+    prompt = f"""You are SmartGiaoAn, an expert Vietnamese ESL worksheet designer.
 
-═══════════════════════════════════
-IDENTITY & NON-NEGOTIABLES
-═══════════════════════════════════
-- Every worksheet must feel handcrafted, not AI-generated.
-- OUTPUT: Raw valid JSON only. No markdown. No code fences. No explanation. No extra keys.
-- Vietnamese localisation is the DEFAULT. Use it naturally, never forced.
+LOCALIZED CONTEXT FOR THIS WORKSHEET (use these naturally in activities):
+- Cities: {selected_cities[0]} and {selected_cities[1]}
+- Landmarks: {selected_landmarks[0]} and {selected_landmarks[1]}
+- Foods: {selected_foods[0]}, {selected_foods[1]}, and {selected_foods[2]}
 
-VIETNAMESE NAMES (rotate freely): Minh, Lan, Huy, Trang, Nam, Linh, Duc, Mai, Khoa, Phuong, An, Bao, Chi, Dung, Ha, Khanh, Long, My, Nhi, Quang, Son, Thu, Tuan, Vy
-VIETNAMESE PLACES: Hanoi, Ho Chi Minh City, Hoi An, Sapa, Da Nang, Da Lat, Hue, Nha Trang, Ha Long Bay, the Mekong Delta, Hoan Kiem Lake, West Lake, Ben Thanh Market, the Old Quarter
-VIETNAMESE CULTURE & FOOD: Tet, Mid-Autumn Festival, ao dai, dong ho paintings, water puppetry, pho, banh mi, bun bo Hue, com tam, banh xeo, che, ca phe trung, xe om, motorbike culture, family-centred values, ancestor worship, five-fruit tray
-Use international contexts ONLY when the topic genuinely requires it (e.g. IELTS global issues, science, geography).
+{formatting_rules}
 
-═══════════════════════════════════
-LEVEL & AUDIENCE RULES
-═══════════════════════════════════
-Apply these rules strictly for the level in this request:
+TOPIC: {topic}
 
-KINDERGARTEN / Pre-A1 (age 3–6):
-- Tasks only: trace letters, circle the picture, colour by number, dot-to-dot, match picture to word, draw and colour, simple chants, stamp or tick activities
-- Max 6 words per instruction line. Massive white space. Implied large font.
-- NEVER write gap-fills, MCQs, or reading comprehension for this level.
-- A dot-to-dot, a colouring task, or a tracing sheet is a complete valid worksheet.
+DYNAMIC GAME DIRECTOR (MANDATORY — DO NOT USE A STATIC FORMULA):
+You must select EXACTLY 3 to 4 completely different activity types for this worksheet.
+For THIS specific generation, the Director has chosen:
+{activity_directive}
 
-PRIMARY A1 (age 6–9):
-- Single-clause sentences. Phonics. Sight words. Picture labels.
-- Tasks: match word to picture, fill one blank, true/false with pictures, draw & label, sequence 3–4 pictures
+RULES FOR THE DIRECTOR:
+- You MUST use the activity types listed above. Do not swap them out.
+- Each activity must feel distinct. Do not repeat the same mechanic twice.
+- Weave the localized cities, landmarks, and foods into the activities naturally.
+- For Kindergarten/Primary: favor drawing, matching, coloring, and simple puzzles.
+- For Secondary/IELTS: you may adapt the activities to be more analytical (e.g., a Detective Story becomes a reading-comprehension mystery).
 
-PRIMARY A2 (age 9–12):
-- Short paragraphs. Basic grammar. Cambridge Movers/Flyers register.
-- Tasks: MCQ (3 options), fill-blank (1 word), short answer (1–2 sentences), correct the mistake, order words into a sentence
+UNSPLASH HEADER IMAGE REQUIREMENT:
+- At the top of your JSON output, include a field named "header_image_query".
+- The value must be a specific, photorealistic Unsplash search query for a 2K landscape of Vietnamese nature or cityscape based on one of the injected locations.
+- Examples: "Da Lat pine forest misty morning photorealistic", "Ha Long Bay limestone karsts sunset 4k", "Mekong Delta floating market aerial".
+- STRICTLY NO CARTOONS, NO CLIP ART, NO ILLUSTRATIONS. Real photography only.
 
-SECONDARY B1 (age 12–15, KET/PET style):
-- Multi-paragraph texts. Inference. Functional language.
-- Tasks: MCQ (4 options), T/F/Not Given, gap-fill (word and phrase level), short answer (2–3 sentences), guided email or message
+ANSWER KEY ISOLATION (CRITICAL FOR PRINT ENGINE):
+- ALL answers, solutions, teacher notes, and correct mappings MUST be placed inside a top-level JSON key named "answer_key".
+- The "answer_key" object must contain clear, labeled answers for every activity you generated.
+- The frontend print CSS uses the ".answer-key-section" class to force answers onto a separate A4 page. Your JSON structure must support this by keeping answers out of the main "activities" array.
+- Do NOT mix answers into the student-facing activity content.
 
-SECONDARY B2 (age 15–18, PET/FCE style):
-- Authentic-style texts. Nuanced vocabulary. Discourse markers.
-- Tasks: multiple matching, open cloze, word formation, key word transformation, guided essay with paragraph plan
-
-IELTS / C1–C2 (adult exam prep):
-- Academic register. Complex argument. Paraphrase and inference at discourse level.
-- Reading tasks: MCQ, True/False/Not Given, matching headings, sentence completion, summary completion, note completion, short answer
-- Writing tasks: Task 1 (describe a graph/chart/process) or Task 2 (discursive/argumentative essay prompt with planning scaffold)
-- Questions must mirror real IELTS difficulty and phrasing exactly.
-
-═══════════════════════════════════
-QUESTION COUNT RULES
-═══════════════════════════════════
-- Honour the num_questions value from the request exactly.
-- Minimum: 1 (a single focused task is a valid worksheet — never pad).
-- Maximum: 32 items total across all sections.
-- Kindergarten: count tasks, not questions. 6–10 tasks = full worksheet.
-- IELTS: one full passage + question set (15–20 items) is one complete worksheet.
-- NEVER add filler questions to hit a number. Every item must earn its place.
-
-═══════════════════════════════════
-CONTENT VOLUME (3 print pages for standard worksheets)
-═══════════════════════════════════
-Page 1 — Passage / vocabulary presentation / listening script + first 1–2 sections
-Page 2 — Core practice (grammar, vocabulary, comprehension exercises)
-Page 3 — Production task + Answer Key + Teacher Notes
-
-Kindergarten: 1 page max. Big tasks, massive white space.
-IELTS: the passage alone fills page 1. That is correct and expected.
-
-{listening_rule}
-
-═══════════════════════════════════
-REQUIRED JSON KEYS — ALL MUST BE PRESENT
-═══════════════════════════════════
-Return this exact structure. Do not rename or omit any key.
+OUTPUT FORMAT — VALID JSON ONLY:
+Return a single, valid JSON object. No markdown code fences. No commentary outside the JSON.
+The structure must be:
 
 {{
-  "title": "Engaging worksheet title",
-  "level": "e.g. A2 / Cambridge Movers",
-  "audience": "e.g. Primary, age 9–12",
-  "skill_focus": "reading | writing | grammar | vocabulary | listening | mixed",
-  "topic": "the topic",
+  "header_image_query": "string — specific Unsplash query for 2K photorealistic Vietnamese landscape",
+  "title": "string — catchy, localized title using one of the cities or landmarks",
+  "level": "e.g. {level}",
+  "audience": "e.g. Primary, age 9-12",
+  "skill_focus": "{skill or 'mixed'}",
+  "topic": "{topic}",
   "learning_objectives": ["objective 1", "objective 2", "objective 3"],
   "vocab_list": [
     {{"word": "...", "definition": "...", "example": "Vietnamese-localised example sentence"}}
@@ -644,19 +722,22 @@ Return this exact structure. Do not rename or omit any key.
   "extension_activity": "One optional challenge task for fast finishers. Must use the same topic and push one level higher."
 }}
 
-═══════════════════════════════════
-QUESTION TYPE VARIETY
-═══════════════════════════════════
-- Never use more than 8 items of the same type consecutively.
-- Standard worksheets (10+ items): use at least 3 different question types.
-- IELTS: mirror the real exam\'s question-type distribution across a single passage.
-- Kindergarten: activity tasks only — never mix in written question types.
-- options array: include ONLY for MCQ items. Omit entirely for all other item types.
-- answer_line: include for all student-written responses. Omit for MCQ.
+{listening_rule}
+
+CONTENT GUIDELINES:
+- "content" should be flexible per activity type. For example:
+    - matching: {{"left": ["...", "..."], "right": ["...", "..."]}}
+    - true_false: {{"statements": ["...", "..."]}}
+    - word_scramble: {{"words": ["...", "..."]}}
+    - categorization: {{"categories": ["...", "..."], "items": ["...", "..."]}}
+    - drawing_prompt: {{"prompt": "...", "vocabulary": ["...", "..."]}}
+- Keep vocabulary aligned with the topic AND the localized context.
+- Ensure the JSON is minified or pretty-printed, but ALWAYS syntactically valid.
+- Vietnamese names (rotate freely): Minh, Lan, Huy, Trang, Nam, Linh, Duc, Mai, Khoa, Phuong, An, Bao, Chi, Dung, Ha, Khanh, Long, My, Nhi, Quang, Son, Thu, Tuan, Vy
+- Vietnamese culture & food: Tet, Mid-Autumn Festival, ao dai, dong ho paintings, water puppetry, pho, banh mi, bun bo Hue, com tam, banh xeo, che, ca phe trung, xe om, motorbike culture, family-centred values, ancestor worship, five-fruit tray
 """
-
-
-async def _run_gemini(prompt: str, level: str, model_name: str, skill: str = "") -> dict:
+    return prompt
+async def _run_gemini(prompt: str, level: str, model_name: str, skill: str = "", topic: str = "", num_questions: int = 24) -> dict:
     """
     Run Gemini with:
       1. Vertex AI regional routing (bypasses geo-block when ADC is configured)
@@ -664,7 +745,7 @@ async def _run_gemini(prompt: str, level: str, model_name: str, skill: str = "")
       3. Fallback model chain for model-not-found / quota errors
       4. Up to 3 retries per model for timeout / empty / JSON errors
     """
-    system_instruction = build_system_prompt(level)
+    system_instruction = build_system_prompt(level, skill=skill, topic=topic, num_questions=num_questions)
 
     seen: set = set()
     model_chain = [
@@ -890,7 +971,7 @@ async def generate_ws(payload: WorksheetRequest, user: User = Depends(require_us
     prompt = f"""Create one complete, print-ready ESL worksheet using these exact specifications.\n\nLEVEL: {payload.level} (CEFR {payload.cefr})\nSKILL: {payload.skill}\nTOPIC: {payload.topic}\nGRAMMAR FOCUS: {payload.grammar_focus or 'Choose the most appropriate grammar point for this level and topic'}\nNUMBER OF ITEMS: {payload.num_questions} (honour this exactly — never pad, never exceed 32)\n\nSTRICT RULES:\n1. LOCALISATION — Localise everything to Vietnam by default. Use Vietnamese names, places, food, and culture naturally throughout the passage and all example sentences. Only use international contexts if the topic genuinely requires it.\n2. LEVEL CEILING — Every word, sentence, and instruction must be strictly within the {payload.cefr} CEFR vocabulary ceiling. Do not use language above this level anywhere.\n3. READING PASSAGE — If applicable, the passage must read like a real story or authentic text with a character, a setting, and an event. Never a list of facts.\n4. GRAMMAR IN CONTEXT — Weave '{payload.grammar_focus or 'the chosen grammar point'}' into the passage and practice sections naturally. Never drill grammar in isolation.\n5. ANSWER KEY — The answer_key array must contain the correct answer for every single numbered item without exception. No item may be missing.\n6. TEACHER NOTES — Must reference at least one Vietnamese L1 interference error specific to this grammar point or skill.\n7. OUTPUT — Return ONLY the raw JSON matching the schema in your instructions. No markdown. No code fences. No preamble."""
     # ── END UPDATED PROMPT ───────────────────────────────────────────────────
 
-    ws_data = await _run_gemini(prompt, payload.level, model_name=config["model"], skill=payload.skill)
+    ws_data = await _run_gemini(prompt, payload.level, model_name=config["model"], skill=payload.skill, topic=payload.topic, num_questions=payload.num_questions)
     ws_id   = f"ws_{uuid.uuid4().hex[:12]}"
     ws_doc  = {
         "worksheet_id": ws_id, "user_id": user.user_id,
@@ -1112,7 +1193,7 @@ async def generate_lesson_plan(payload: LessonPlanRequest, user: User = Depends(
     if user.free_used + total_cost > config["monthly_quota"] + user.bonus_credits:
         raise HTTPException(status_code=402, detail=f"Need {total_cost} credits. Upgrade or reduce weeks.")
 
-   prompt = (
+    prompt = (
                 f"You are a senior Cambridge ESOL curriculum designer for Vietnamese learners.\n\n"
                 f"Create a {payload.duration_weeks}-week unit plan for {payload.level} (CEFR {payload.cefr}) students.\n"
                 f"Topic: '{payload.topic}'\nLessons per week: {payload.lessons_per_week}\n\n"
