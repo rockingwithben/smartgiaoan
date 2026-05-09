@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { I18nProvider } from './lib/i18n';
@@ -23,6 +23,7 @@ import AuthModal from './pages/AuthModal';
 import WorksheetView from './pages/WorksheetView';
 import { CookieConsent } from './components/CookieConsent';
 import { AdManager } from './components/AdManager';
+import { SEO } from './meta'; // Import SEO component
 import './App.css';
 
 class ErrorBoundary extends React.Component {
@@ -68,6 +69,8 @@ function AppRouter() {
         <Route path="/login" element={<AuthModal />} />
         
         <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/library" element={<PublicLibrary />} />
+        <Route path="/worksheet/:id" element={<WorksheetView />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/about" element={<About />} />
         <Route path="/pricing" element={<Pricing />} />
@@ -89,8 +92,34 @@ function AppRouter() {
 }
 
 function App() {
+  const [showEasterEgg, setShowEasterEgg] = useState(false);
+
   useEffect(() => {
     wakeUpServer();
+
+    const konamiCode = [
+      "ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown",
+      "ArrowLeft", "ArrowRight", "ArrowLeft", "ArrowRight",
+      "b", "a", "Enter",
+    ];
+    let konamiIndex = 0;
+
+    const handleKeyDown = (event) => {
+      if (event.key === konamiCode[konamiIndex]) {
+        konamiIndex++;
+        if (konamiIndex === konamiCode.length) {
+          console.log("Konami Code entered!");
+          setShowEasterEgg(true);
+          setTimeout(() => setShowEasterEgg(false), 5000); // Show for 5 seconds
+          konamiIndex = 0; // Reset for next time
+        }
+      } else {
+        konamiIndex = 0;
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
 
   return (
@@ -99,6 +128,11 @@ function App() {
         <BrowserRouter>
           <AuthProvider>
             <AppRouter />
+            {showEasterEgg && (
+              <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[9999] animate-bounce">
+                <p className="text-white text-4xl font-bold">🎉 Konami! 🎉</p>
+              </div>
+            )}
           </AuthProvider>
         </BrowserRouter>
       </I18nProvider>

@@ -5,6 +5,7 @@ import { Printer, Share2, Copy, Check, AlertTriangle, BookOpen, GraduationCap, C
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { PaywallModal } from '../components/PaywallModal';
+import { SEO } from '../meta';
 
 export default function WorksheetView() {
   const { id } = useParams();
@@ -122,6 +123,13 @@ export default function WorksheetView() {
 
   if (!worksheet) return null;
 
+  // SEO Meta Data
+  const seoTitle = `${worksheet.title} | ESL Worksheet ${worksheet.level} (${worksheet.cefr}) - SmartGiaoAn`;
+  const seoDescription = `ESL worksheet for ${worksheet.level} (${worksheet.cefr}) students focusing on ${worksheet.skill}${worksheet.topic ? ` and ${worksheet.topic}` : ``}. Generate and print your own custom worksheets.`;
+  const seoKeywords = `${worksheet.skill} worksheet, ${worksheet.level} ESL, ${worksheet.cefr} English, ${worksheet.topic || ``} lessons, SmartGiaoAn`;
+  const seoOgUrl = `https://www.smartgiaoan.site/worksheet/${worksheet.worksheet_id}`;
+  const seoOgImage = `https://www.smartgiaoan.site/og-image.svg`; // Use a default or generate dynamic image
+
   const content = worksheet.content || {};
   const isKindergarten = worksheet.level?.toLowerCase().includes('kindergarten');
   const isIELTS = worksheet.level === 'IELTS' || worksheet.level === 'Secondary';
@@ -200,6 +208,13 @@ export default function WorksheetView() {
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans print:bg-white">
+      <SEO 
+        title={seoTitle}
+        description={seoDescription}
+        keywords={seoKeywords}
+        ogUrl={seoOgUrl}
+        ogImage={seoOgImage}
+      />
       
       {/* ── ACTION BAR (hidden when printing) ── */}
       <div className="print:hidden sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-gray-200">

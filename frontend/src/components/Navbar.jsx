@@ -43,8 +43,11 @@ export function Navbar() {
         <div className="flex items-center justify-between h-16">
 
           <Link to="/" className="flex items-center gap-2 flex-shrink-0">
-            <span className="font-serif font-black text-xl text-gray-900 tracking-tight">
+            <span className="font-serif font-black text-xl text-gray-900 tracking-tight relative group">
               Smart<span className="text-red-600">GiaoAn</span>
+              <span className="absolute inset-0 flex items-center justify-center text-xs font-black text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
+                BETA
+              </span>
             </span>
           </Link>
 

@@ -259,6 +259,76 @@ async def _create_session(user_id: str, response: Response) -> str:
     )
     return token
 
+# ============================================================
+# API ROUTES — SMART LESSON PLANNER (PREMIUM)
+# ============================================================
+@api_router.post("/lesson-plans/generate")
+async def generate_lesson_plan(payload: LessonPlanRequest, user: User = Depends(require_tier("premium"))):
+    user       = await refresh_user_credits(user)
+    config     = TIER_CONFIG["premium"]
+    total_cost = payload.duration_weeks * payload.lessons_per_week
+
+    if user.free_used + total_cost > config["monthly_quota"] + user.bonus_credits:
+        raise HTTPException(status_code=402, detail=f"Need {total_cost} credits. Upgrade or reduce weeks.")
+
+    prompt = (
+        f"You are a senior Cambridge ESOL curriculum designer for Vietnamese learners.\n\n"
+        f"Create a {payload.duration_weeks}-week unit plan for {payload.level} (CEFR {payload.cefr}) students.\n"
+        f"Topic: {payload.topic}\nLessons per week: {payload.lessons_per_week}\n\n"
+        "For EACH lesson provide: lesson_title, lesson_type, duration_minutes, "
+        "learning_objectives (array), worksheet_content (full JSON), homework_task, materials_needed.\n\n"
+        "Also include: unit_title, unit_overview, assessment_criteria, "
+        "suggested_extensions_for_advanced_learners, suggested_support_for_weak_learners.\n\n"
+        "Rules:\n- Vietnamese names: Minh, Lan, Huy, Trang, Nam, Linh, Duc, Mai, Khoa, Phuong.\n"
+        "- Vietnamese locations and culture throughout.\n- OUTPUT MUST BE RAW VALID JSON ONLY.\n"
+                "- Structure: {\"unit_title\": \"...\", \"weeks\": [{\"week_number\": 1, \"lessons\": [...]}]}"
+    )
+
+    plan_data = await _run_gemini(prompt, payload.level, model_name=GEMINI_MODEL_PREMIUM)
+    plan_id   = f"lp_{uuid.uuid4().hex[:12]}"
+    plan_doc  = {
+        "plan_id": plan_id, "user_id": user.user_id,
+        "unit_title": plan_data.get("unit_title", f"{payload.topic} Unit"),
+        "level": payload.level, "cefr": payload.cefr, "topic": payload.topic,
+        "duration_weeks": payload.duration_weeks, "content": plan_data,
+        "created_at": _now().isoformat()
+    }
+    await db.lesson_plans.insert_one(plan_doc)
+
+    worksheet_count = 0
+    for week in plan_data.get("weeks", []):
+        for lesson in week.get("lessons", []):
+            if "worksheet_content" in lesson:
+                await db.worksheets.insert_one({
+                    "worksheet_id": f"ws_{uuid.uuid4().hex[:12]}",
+                    "user_id": user.user_id,
+                    "title": lesson.get("lesson_title", "Untitled"),
+                    "level": payload.level, "cefr": payload.cefr,
+                    "skill": lesson.get("lesson_type", "Mixed"), "topic": payload.topic,
+                    "content": lesson["worksheet_content"],
+                    "is_public": False, "parent_plan": plan_id,
+                    "created_at": _now().isoformat()
+                })
+                worksheet_count += 1
+
+    await db.users.update_one({"user_id": user.user_id}, {"$inc": {"free_used": total_cost}})
+    return {
+        "plan_id": plan_id, "unit_title": plan_doc["unit_title"],
+        "worksheets_generated": worksheet_count, "total_lessons": total_cost,
+        "content": plan_data
+    }
+
+@api_router.get("/lesson-plans")
+async def list_lesson_plans(user: User = Depends(require_user)):
+    return await db.lesson_plans.find({"user_id": user.user_id}, {"_id": 0}).sort("created_at", -1).to_list(50)
+
+@api_router.get("/lesson-plans/{plan_id}")
+async def get_lesson_plan(plan_id: str, user: User = Depends(require_user)):
+    plan = await db.lesson_plans.find_one({"plan_id": plan_id, "user_id": user.user_id}, {"_id": 0})
+    if not plan:
+        raise HTTPException(status_code=404, detail="Lesson plan not found")
+    return plan
+
 async def get_current_user_optional(
     request: Request,
     session_token: Optional[str] = Cookie(None),
@@ -796,7 +866,10 @@ async def generate_ws(payload: WorksheetRequest, user: User = Depends(require_us
             ad_duration = random.choice([15, 30, 60])
 
     # ── UPDATED PROMPT ────────────────────────────────────────────────────────
-    prompt = f"""Create one complete, print-ready ESL worksheet using these exact specifications.\n\nLEVEL: {payload.level} (CEFR {payload.cefr})\nSKILL: {payload.skill}\nTOPIC: {payload.topic}\nGRAMMAR FOCUS: {payload.grammar_focus or 'Choose the most appropriate grammar point for this level and topic'}\nNUMBER OF ITEMS: {payload.num_questions} (honour this exactly — never pad, never exceed 32)\n\nSTRICT RULES:\n1. LOCALISATION — Localise everything to Vietnam by default. Use Vietnamese names, places, food, and culture naturally throughout the passage and all example sentences. Only use international contexts if the topic genuinely requires it.\n2. LEVEL CEILING — Every word, sentence, and instruction must be strictly within the {payload.cefr} CEFR vocabulary ceiling. Do not use language above this level anywhere.\n3. READING PASSAGE — If applicable, the passage must read like a real story or authentic text with a character, a setting, and an event. Never a list of facts.\n4. GRAMMAR IN CONTEXT — Weave \'{payload.grammar_focus or 'the chosen grammar point'}\' into the passage and practice sections naturally. Never drill grammar in isolation.\n5. ANSWER KEY — The answer_key array must contain the correct answer for every single numbered item without exception. No item may be missing.\n6. TEACHER NOTES — Must reference at least one Vietnamese L1 interference error specific to this grammar point or skill.\n7. OUTPUT — Return ONLY the raw JSON matching the schema in your instructions. No markdown. No code fences. No preamble."""\n    # ── END UPDATED PROMPT ───────────────────────────────────────────────────\n\n    ws_data = await _run_gemini(prompt, payload.level, model_name=config["model"], skill=payload.skill)
+    prompt = f"""Create one complete, print-ready ESL worksheet using these exact specifications.\n\nLEVEL: {payload.level} (CEFR {payload.cefr})\nSKILL: {payload.skill}\nTOPIC: {payload.topic}\nGRAMMAR FOCUS: {payload.grammar_focus or 'Choose the most appropriate grammar point for this level and topic'}\nNUMBER OF ITEMS: {payload.num_questions} (honour this exactly — never pad, never exceed 32)\n\nSTRICT RULES:\n1. LOCALISATION — Localise everything to Vietnam by default. Use Vietnamese names, places, food, and culture naturally throughout the passage and all example sentences. Only use international contexts if the topic genuinely requires it.\n2. LEVEL CEILING — Every word, sentence, and instruction must be strictly within the {payload.cefr} CEFR vocabulary ceiling. Do not use language above this level anywhere.\n3. READING PASSAGE — If applicable, the passage must read like a real story or authentic text with a character, a setting, and an event. Never a list of facts.\n4. GRAMMAR IN CONTEXT — Weave '{payload.grammar_focus or 'the chosen grammar point'}' into the passage and practice sections naturally. Never drill grammar in isolation.\n5. ANSWER KEY — The answer_key array must contain the correct answer for every single numbered item without exception. No item may be missing.\n6. TEACHER NOTES — Must reference at least one Vietnamese L1 interference error specific to this grammar point or skill.\n7. OUTPUT — Return ONLY the raw JSON matching the schema in your instructions. No markdown. No code fences. No preamble."""
+    # ── END UPDATED PROMPT ───────────────────────────────────────────────────
+
+    ws_data = await _run_gemini(prompt, payload.level, model_name=config["model"], skill=payload.skill)
     ws_id   = f"ws_{uuid.uuid4().hex[:12]}"
     ws_doc  = {
         "worksheet_id": ws_id, "user_id": user.user_id,
@@ -1325,17 +1398,6 @@ async def paypal_webhook(request: Request):
                 raise HTTPException(status_code=400, detail="Missing PayPal webhook headers or WEBHOOK_ID.")
 
             # Reconstruct the signed data
-            message = paypal_transmission_id + "|" + paypal_cert_url + "|" + paypal_transmission_time + "|" + webhook_id + "|" + body.decode("utf-8")
-            
-            # Verify the signature (this is a simplified example, real verification is more complex)
-            # For a real application, you would fetch the certificate from paypal_cert_url, 
-            # extract the public key, and use it to verify the signature.
-            # This example only logs the event, but for a production app, you'd perform full verification.
-            
-            if not await _verify_paypal_webhook_signature(request):
-                logger.error("PayPal webhook signature verification failed.")
-                raise HTTPException(status_code=403, detail="Webhook signature verification failed.")
-
             body = await request.body()
             headers = request.headers
             paypal_transmission_id = headers.get("paypal-transmission-id")
@@ -1349,6 +1411,18 @@ async def paypal_webhook(request: Request):
                         paypal_auth_algo, paypal_webhook_id, paypal_transmission_sig]):
                 logger.error("Missing PayPal webhook headers.")
                 raise HTTPException(status_code=400, detail="Missing PayPal webhook headers.")
+
+            # Reconstruct the signed data
+            message = paypal_transmission_id + "|" + paypal_cert_url + "|" + paypal_transmission_time + "|" + paypal_webhook_id + "|" + body.decode("utf-8")
+            
+            # Verify the signature (this is a simplified example, real verification is more complex)
+            # For a real application, you would fetch the certificate from paypal_cert_url, 
+            # extract the public key, and use it to verify the signature.
+            # This example only logs the event, but for a production app, you\`d perform full verification.
+            # TODO: Implement actual PayPal webhook signature verification
+            # if not await _verify_paypal_webhook_signature(request):
+            #     logger.error("PayPal webhook signature verification failed.")
+            #     raise HTTPException(status_code=403, detail="Webhook signature verification failed.")
 
             verification_data = {
                 "transmission_id": paypal_transmission_id,

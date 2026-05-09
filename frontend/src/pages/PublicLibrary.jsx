@@ -4,6 +4,7 @@ import { http } from '../lib/api';
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
 import { Search, Filter, Copy, Eye, BookOpen, User, Sparkles } from 'lucide-react';
+import { SEO } from '../meta';
 
 const LEVEL_FILTERS = ['All', 'Kindergarten', 'Primary', 'Secondary', 'IELTS'];
 const SKILL_FILTERS = ['All', 'Grammar', 'Vocabulary', 'Reading', 'Writing', 'Listening', 'Speaking'];
@@ -64,6 +65,13 @@ export default function PublicLibrary() {
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
+      <SEO
+        title="Community Library | SmartGiaoAn - Free ESL Worksheets"
+        description="Browse, preview, and remix free ESL worksheets from teachers across Vietnam. Filter by level, skill, and topic."
+        keywords="ESL worksheet library, free English worksheets, Cambridge, CEFR, IELTS, Vietnam teachers, public worksheets"
+        ogUrl="https://www.smartgiaoan.site/library"
+        ogImage="https://www.smartgiaoan.site/og-image.svg"
+      />
       <Navbar />
       <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 font-sans w-full">
 
@@ -167,21 +175,6 @@ export default function PublicLibrary() {
                 key={ws.worksheet_id}
                 className="bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-xl transition-all flex flex-col overflow-hidden group"
               >
-                <script type="application/ld+json">
-                  {JSON.stringify({
-                    '@context': 'https://schema.org',
-                    '@type': 'CreativeWork',
-                    name: ws.title,
-                    description: `ESL worksheet for ${ws.level} (${ws.cefr}) — ${ws.skill}${ws.topic ? ` on ${ws.topic}` : ''}.`,
-                    url: `https://www.smartgiaoan.site/worksheet/${ws.worksheet_id}`,
-                    creator: {
-                      '@type': 'Organization',
-                      name: 'SmartGiaoAn',
-                    },
-                    educationalLevel: ws.cefr,
-                    inLanguage: 'en',
-                  })}
-                </script>
                 <div className="p-6 flex-grow">
                   <div className="flex justify-between items-start mb-4">
                     <span className="bg-red-50 text-red-700 text-xs font-black px-3 py-1 rounded-full uppercase tracking-wide">
