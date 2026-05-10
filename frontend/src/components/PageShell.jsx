@@ -1,10 +1,12 @@
 import React from 'react';
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
+import { SEO } from '../meta';
 
-export function PageShell({ eyebrow, title, intro, children }) {
+export function PageShell({ eyebrow, title, intro, children, seo }) {
   return (
     <div className="min-h-screen flex flex-col bg-background">
+      {seo && <SEO {...seo} />}
       <Navbar />
       <main className="flex-1">
         <section className="border-b border-border bg-white">

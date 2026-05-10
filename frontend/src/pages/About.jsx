@@ -62,8 +62,18 @@ export default function About() {
 
   const t = lang === 'vi' ? vi : en;
 
+  const seo = {
+    title: lang === 'vi' ? 'Về SmartGiaoAn | Tuyên ngôn ESL' : 'About SmartGiaoAn | ESL Manifesto',
+    description: lang === 'vi'
+      ? 'Tìm hiểu tại sao SmartGiaoAn được tạo ra: giải pháp anti-bloat cho giáo viên ESL tại Việt Nam. Chuẩn Cambridge, bối cảnh bản địa, giá thật thà.'
+      : 'Learn why SmartGiaoAn exists: the anti-bloat alternative for ESL teachers in Vietnam. Cambridge-grade, locally relevant, honestly priced.',
+    keywords: 'SmartGiaoAn about, ESL platform Vietnam, Cambridge worksheets philosophy',
+    ogUrl: 'https://www.smartgiaoan.site/about',
+    ogImage: 'https://www.smartgiaoan.site/og-image.svg',
+  };
+
   return (
-    <PageShell eyebrow={t.eyebrow} title={t.title} intro={t.intro}>
+    <PageShell eyebrow={t.eyebrow} title={t.title} intro={t.intro} seo={seo}>
       {/* Problem + Answer */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-10">
         <div className="md:col-span-7 space-y-12">

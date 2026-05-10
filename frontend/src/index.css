@@ -4,13 +4,16 @@
 
 /* Base HTML setup for smooth scrolling and anti-aliased text */
 @layer base {
+  :root {
+    --radius: 0.25rem;
+  }
   html {
     scroll-behavior: smooth;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
   body {
-    @apply bg-gray-50 text-gray-900;
+    @apply bg-background text-ink;
   }
 }
 

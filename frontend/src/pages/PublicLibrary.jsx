@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { http } from '../lib/api';
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
+import { Mascot } from '../components/Mascot';
 import { Search, Filter, Copy, Eye, BookOpen, User, Sparkles } from 'lucide-react';
 import { SEO } from '../meta';
 
@@ -173,10 +174,10 @@ export default function PublicLibrary() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {worksheets.map((ws) => (
-              <div
-                key={ws.worksheet_id}
-                className="bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-xl transition-all flex flex-col overflow-hidden group"
-              >
+                <div
+                  key={ws.worksheet_id}
+                  className="bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-xl hover:scale-105 transition-all transform flex flex-col overflow-hidden group"
+                >
                 <div className="p-6 flex-grow">
                   <div className="flex justify-between items-start mb-4">
                     <span className="bg-red-50 text-red-700 text-xs font-black px-3 py-1 rounded-full uppercase tracking-wide">
@@ -235,6 +236,7 @@ export default function PublicLibrary() {
         )}
       </main>
       <Footer />
+      <Mascot />
     </div>
   );
 }

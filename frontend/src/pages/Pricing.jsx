@@ -211,8 +211,18 @@ export default function Pricing() {
     },
   ];
 
+  const seo = {
+    title: lang === 'vi' ? 'SmartGiaoAn | Bảng giá gói ESL' : 'SmartGiaoAn Pricing | ESL Worksheet Plans',
+    description: lang === 'vi'
+      ? 'Chọn gói SmartGiaoAn phù hợp: miễn phí, Cơ bản, hoặc Cao cấp. Tạo bài tập ESL chuẩn Cambridge & CEFR cho lớp học tại Việt Nam.'
+      : 'Compare SmartGiaoAn plans: Free, Basic, or Premium. Generate Cambridge & CEFR ESL worksheets for classrooms across Vietnam.',
+    keywords: 'ESL pricing, Vietnam ESL subscription, SmartGiaoAn plans, worksheet generator cost',
+    ogUrl: 'https://www.smartgiaoan.site/pricing',
+    ogImage: 'https://www.smartgiaoan.site/og-image.svg',
+  };
+
   return (
-    <PageShell eyebrow={tt.eyebrow} title={tt.title} intro={tt.intro}>
+    <PageShell eyebrow={tt.eyebrow} title={tt.title} intro={tt.intro} seo={seo}>
       <script type="application/ld+json">
         {JSON.stringify({
           '@context': 'https://schema.org',

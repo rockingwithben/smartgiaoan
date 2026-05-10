@@ -21,10 +21,12 @@ import PublicLibrary from './pages/PublicLibrary';
 import ProfileSettings from './pages/ProfileSettings';
 import AuthModal from './pages/AuthModal';
 import WorksheetView from './pages/WorksheetView';
+import WorksheetUpload from './pages/WorksheetUpload';
 import { CookieConsent } from './components/CookieConsent';
 import { SponsorManager } from './components/SponsorManager';
 import { SEO } from './meta'; // Import SEO component
 import './App.css';
+import GoogleAdSenseScript from './components/GoogleAdSense';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -71,6 +73,7 @@ function AppRouter() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/library" element={<PublicLibrary />} />
         <Route path="/worksheet/:id" element={<WorksheetView />} />
+        <Route path="/upload" element={<WorksheetUpload />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/about" element={<About />} />
         <Route path="/pricing" element={<Pricing />} />
@@ -81,8 +84,6 @@ function AppRouter() {
         <Route path="/account" element={<Account />} />
         <Route path="/profile" element={<ProfileSettings />} />
         <Route path="/levels" element={<Levels />} />
-        <Route path="/library" element={<PublicLibrary />} />
-        <Route path="/worksheet/:id" element={<WorksheetView />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
       <CookieConsent />
@@ -128,6 +129,7 @@ function App() {
         <BrowserRouter>
           <AuthProvider>
             <AppRouter />
+            <GoogleAdSenseScript />
             {showEasterEgg && (
               <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[9999] animate-bounce">
                 <p className="text-white text-4xl font-bold">🎉 Konami! 🎉</p>

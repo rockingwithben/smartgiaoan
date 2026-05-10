@@ -54,6 +54,7 @@ export function Navbar() {
           <div className="hidden md:flex items-center gap-6">
             <Link to="/dashboard" className={`text-sm font-bold transition-colors ${isActive('/dashboard')}`}>{t('dashboard') || 'Dashboard'}</Link>
             <Link to="/library" className={`text-sm font-bold transition-colors ${isActive('/library')}`}>Library</Link>
+            <Link to="/upload" className={`text-sm font-bold transition-colors ${isActive('/upload')}`}>Share</Link>
             <Link to="/pricing" className={`text-sm font-bold transition-colors ${isActive('/pricing')}`}>Pricing</Link>
           </div>
 
@@ -99,7 +100,6 @@ export function Navbar() {
                 )}
               </div>
             ) : (
-              /* FIX: Restored link to manual AuthModal login page */
               <Link
                 to="/login"
                 className="bg-black text-white text-sm font-bold px-4 py-2 rounded-xl hover:bg-gray-800 transition-colors shadow-sm"
@@ -125,6 +125,7 @@ export function Navbar() {
         <div className="md:hidden border-t border-gray-100 bg-white px-4 py-4 space-y-3 shadow-inner animate-in slide-in-from-top-2 duration-200">
           <Link to="/dashboard" className={`block py-2 text-base font-bold ${isActive('/dashboard')}`}>{t('dashboard') || 'Dashboard'}</Link>
           <Link to="/library" className={`block py-2 text-base font-bold ${isActive('/library')}`}>Library</Link>
+          <Link to="/upload" className={`block py-2 text-base font-bold ${isActive('/upload')}`}>Share</Link>
           <Link to="/pricing" className={`block py-2 text-base font-bold ${isActive('/pricing')}`}>Pricing</Link>
           
           <div className="pt-3 mt-1 border-t border-gray-50 flex items-center justify-between">

@@ -1,0 +1,205 @@
+import React, { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { http } from '../lib/api';
+import { Navbar } from '../components/Navbar';
+import { Footer } from '../components/Footer';
+import { SEO } from '../meta';
+
+export default function WorksheetUpload() {
+  const navigate = useNavigate();
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [level, setLevel] = useState('');
+  const [skill, setSkill] = useState('');
+  const [topic, setTopic] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  const LEVELS = ['Kindergarten', 'Primary', 'Secondary', 'IELTS'];
+  const SKILLS = ['Grammar', 'Vocabulary', 'Reading', 'Writing', 'Listening', 'Speaking'];
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      const worksheetData = {
+        title,
+        description,
+        level,
+        skill,
+        topic,
+        is_public: true
+      };
+
+      const response = await http.post('/library/upload', worksheetData);
+      setSuccess('Worksheet uploaded successfully! It will be visible in the library after review.');
+      setTitle('');
+      setDescription('');
+      setLevel('');
+      setSkill('');
+      setTopic('');
+      
+      // Redirect to library after 2 seconds
+      setTimeout(() => {
+        navigate('/library');
+      }, 2000);
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to upload worksheet. Please try again.');
+      console.error('Upload error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex flex-col bg-gray-50">
+      <SEO
+        title="Upload Worksheet | SmartGiaoAn - Share Your ESL Materials"
+        description="Share your ESL worksheets with teachers across Vietnam. Help build our community library."
+        keywords="upload worksheet, share ESL materials, teacher resources, Vietnam, ESL worksheets"
+        ogUrl="https://www.smartgiaoan.site/upload"
+        ogImage="https://www.smartgiaoan.site/og-image.svg"
+      />
+      <Navbar />
+      <main className="flex-1 max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 mb-4">
+            Share Your Worksheet
+          </h1>
+          <p className="text-gray-600">
+            Help other teachers by sharing your ESL worksheets. All submissions are reviewed before publishing.
+          </p>
+        </div>
+
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+            {error}
+          </div>
+        )}
+
+      {success && (
+        <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 flex items-center">
+          {success}
+          <img src="https://media.giphy.com/media/3o7aD2saalBwwftBIY/giphy.gif" alt="confetti" className="ml-2 w-6 h-6" />
+        </div>
+      )}
+
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Worksheet Title
+            </label>
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Enter a descriptive title for your worksheet"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent text-lg transition"
+              required
+              disabled={loading}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Description
+            </label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Describe what this worksheet covers and how to use it"
+              rows={4}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent text-lg transition"
+              required
+              disabled={loading}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Level
+              </label>
+              <select
+                value={level}
+                onChange={(e) => setLevel(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent text-lg transition"
+                required
+                disabled={loading}
+              >
+                <option value="">Select a level</option>
+                {LEVELS.map((l) => (
+                  <option key={l} value={l}>
+                    {l}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Skill Focus
+              </label>
+              <select
+                value={skill}
+                onChange={(e) => setSkill(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent text-lg transition"
+                required
+                disabled={loading}
+              >
+                <option value="">Select a skill</option>
+                {SKILLS.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Topic (Optional)
+            </label>
+            <input
+              type="text"
+              value={topic}
+              onChange={(e) => setTopic(e.target.value)}
+              placeholder="e.g., Tet holiday, food, travel, technology"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent text-lg transition"
+              disabled={loading}
+            />
+          </div>
+
+          <div className="flex items-center space-x-3">
+            <button
+              type="submit"
+              disabled={loading || !title || !description || !level || !skill}
+              className="flex-1 bg-red-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? 'Uploading...' : 'Share Worksheet'}
+            </button>
+            <Link
+              to="/library"
+              className="flex-1 bg-gray-200 text-gray-800 px-6 py-3 rounded-lg font-medium hover:bg-gray-300 transition"
+            >
+              Browse Library
+            </Link>
+          </div>
+        </form>
+
+        <div className="mt-8 text-center text-sm text-gray-500">
+          <p>
+            By uploading, you agree to share your worksheet under a Creative Commons license.
+            All content is reviewed to ensure quality and relevance.
+          </p>
+        </div>
+      </main>
+      <Footer />
+    </div>
+  );
+}

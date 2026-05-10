@@ -48,8 +48,18 @@ export default function Contact() {
   };
   const t = lang === 'vi' ? vi : en;
 
+  const seo = {
+    title: lang === 'vi' ? 'Liên hệ SmartGiaoAn | Hỗ trợ giáo viên ESL' : 'Contact SmartGiaoAn | ESL Support for Vietnam',
+    description: lang === 'vi'
+      ? 'Gửi góp ý, báo lỗi hoặc hỏi về SmartGiaoAn. Chúng tôi phản hồi trong 24 giờ làm việc để hỗ trợ giáo viên ESL tại Việt Nam.'
+      : 'Reach the SmartGiaoAn team for bug reports, feature requests, and billing questions. Real ESL support within 24 hours.',
+    keywords: 'SmartGiaoAn contact, ESL support Vietnam, worksheet generator help',
+    ogUrl: 'https://www.smartgiaoan.site/contact',
+    ogImage: 'https://www.smartgiaoan.site/og-image.svg',
+  };
+
   return (
-    <PageShell eyebrow={t.eyebrow} title={t.title} intro={t.intro}>
+    <PageShell eyebrow={t.eyebrow} title={t.title} intro={t.intro} seo={seo}>
       <div className="grid grid-cols-1 md:grid-cols-12 gap-10">
         <div className="md:col-span-7">
           <form onSubmit={submit} className="space-y-5" data-testid="contact-form">

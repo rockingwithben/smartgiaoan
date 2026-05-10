@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useI18n } from '../lib/i18n';
 import { useAuth } from '../lib/auth';
 import { Navbar } from '../components/Navbar';
+import SEO from '../meta';
 import { Footer } from '../components/Footer';
 import { SponsorSlot } from '../components/SponsorSlot';
 import { LEVELS, SKILLS } from '../lib/catalog';
@@ -38,6 +39,15 @@ export default function Landing() {
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />
+      <SEO
+        title="SmartGiaoAn - Cambridge CEFR ESL Worksheets Vietnam"
+        description="Create 3-page Cambridge & CEFR-aligned ESL worksheets localized for Vietnamese learners. Print-ready in seconds with answer keys and teacher notes."
+        keywords="ESL worksheets Vietnam, Cambridge CEFR worksheets, IELTS worksheets Vietnam, printable ESL worksheets, AI lesson planner"
+        ogTitle="SmartGiaoAn - Cambridge CEFR ESL Worksheets Vietnam"
+        ogDescription="Instantly generate 3-page A4 Cambridge & CEFR worksheets localized for Vietnamese learners with answer keys and print-ready layouts."
+        ogUrl="https://www.smartgiaoan.site/"
+        ogImage="https://www.smartgiaoan.site/og-image.svg"
+      />
       <main className="flex-1">
 
         {/* ============ HERO ============ */}
@@ -73,7 +83,7 @@ export default function Landing() {
 
             <div className="md:col-span-5 relative">
               <div className="relative aspect-[4/5] overflow-hidden border border-border bg-white">
-                <img src="https://images.pexels.com/photos/5212703/pexels-photo-5212703.jpeg" alt="Vietnamese ESL classroom" className="w-full h-full object-cover" />
+                <img src="https://images.pexels.com/photos/5212703/pexels-photo-5212703.jpeg" alt="Vietnamese ESL classroom" className="w-full h-full object-cover lazy" />
                 <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/65 to-transparent text-white px-6 py-5">
                   <p className="overline">In classrooms · Hanoi → Saigon</p>
                   <p className="font-display text-xl mt-1">From Tet stories to IELTS reading</p>

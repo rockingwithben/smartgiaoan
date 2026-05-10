@@ -17,3 +17,5 @@ export function SEO({ title, description, keywords, ogTitle, ogDescription, ogUr
     </Helmet>
   );
 }
+
+export default SEO;

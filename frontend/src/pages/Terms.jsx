@@ -167,11 +167,22 @@ export default function Terms() {
     </>
   );
 
+  const seo = {
+    title: lang === 'vi' ? 'SmartGiaoAn | Điều khoản dịch vụ' : 'SmartGiaoAn Terms of Service',
+    description: lang === 'vi'
+      ? 'Đọc điều khoản sử dụng SmartGiaoAn, quy định về AI, quyền sở hữu nội dung và chính sách huỷ gói dành cho giáo viên ESL tại Việt Nam.'
+      : 'Review SmartGiaoAn’s terms of use, AI policy, content ownership, and cancellation details for ESL teachers in Vietnam.',
+    keywords: 'SmartGiaoAn terms, ESL platform policy, worksheet generator legal',
+    ogUrl: 'https://www.smartgiaoan.site/terms',
+    ogImage: 'https://www.smartgiaoan.site/og-image.svg',
+  };
+
   return (
     <PageShell
       eyebrow={lang === 'vi' ? 'Pháp lý' : 'Legal'}
       title={lang === 'vi' ? 'Điều khoản & Sử dụng hợp lý' : 'Terms of Service & Fair Use'}
       intro={lang === 'vi' ? 'Cập nhật lần cuối: tháng 2/2026.' : 'Last updated: February 2026.'}
+      seo={seo}
     >
       <article className="max-w-3xl">{lang === 'vi' ? vi : en}</article>
     </PageShell>
