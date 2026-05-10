@@ -16,15 +16,14 @@ import base64
 import random
 import io
 from docx import Document
-from docx.shared import Pt, Inches
+from docx.shared import Pt
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
-from typing import Optional, Any, Dict, List
+from typing import Optional
 from datetime import datetime, timezone, timedelta
 from xml.sax.saxutils import escape as xml_escape
 from vertexai.generative_models import GenerativeModel as VertexModel, GenerationConfig
 import google.generativeai as genai
-from backend.seo_generator import generate_seo_metadata
 from google.api_core.exceptions import NotFound, InvalidArgument, BadRequest as GoogleBadRequest
 
 # ============================================================
@@ -50,41 +49,25 @@ CORS_ORIGINS = [o.strip() for o in _cors_env.split(',') if o.strip()] or [
 ]
 
 # ============================================================
-GEMINI_MODEL_FREE    = "gemini-3.1-pro-001"
-GEMINI_MODEL_BASIC   = "gemini-3.1-pro-001"
-GEMINI_MODEL_PREMIUM = "gemini-3.1-pro-001"
-
-_GEMINI_FALLBACKS = {
-    GEMINI_MODEL_FREE:    ["gemini-3.1-pro-001"],
-    GEMINI_MODEL_BASIC:   ["gemini-3.1-pro-001"],
-    GEMINI_MODEL_PREMIUM: ["gemini-3.1-pro-001"],
-}
-# MODEL CONFIGURATION - stable aliases, no date suffix
+# FIX 2: Correct model names ("gemini-3.1-pro-001" does not exist).
+#         Using gemini-2.0-flash as a stable, capable default.
+#         Only defined ONCE (previously defined 3 times — removed duplicates).
 # ============================================================
-GEMINI_MODEL_FREE    = "gemini-3.1-pro-001"
-GEMINI_MODEL_BASIC   = "gemini-3.1-pro-001"
-GEMINI_MODEL_PREMIUM = "gemini-3.1-pro-001"
+GEMINI_MODEL_FREE    = "gemini-2.0-flash"
+GEMINI_MODEL_BASIC   = "gemini-2.0-flash"
+GEMINI_MODEL_PREMIUM = "gemini-2.0-flash"
 
 _GEMINI_FALLBACKS = {
-    GEMINI_MODEL_FREE:    ["gemini-3.1-pro-001"],
-    GEMINI_MODEL_BASIC:   ["gemini-3.1-pro-001"],
-    GEMINI_MODEL_PREMIUM: ["gemini-3.1-pro-001"],
-}
-# ============================================================
-GEMINI_MODEL_FREE    = "gemini-3.1-pro-001"
-GEMINI_MODEL_BASIC   = "gemini-3.1-pro-001"
-GEMINI_MODEL_PREMIUM = "gemini-3.1-pro-001"
-
-_GEMINI_FALLBACKS = {
-    GEMINI_MODEL_FREE:    ["gemini-3.1-pro-001"],
-    GEMINI_MODEL_BASIC:   ["gemini-3.1-pro-001"],
-    GEMINI_MODEL_PREMIUM: ["gemini-3.1-pro-001"],
+    GEMINI_MODEL_FREE:    ["gemini-1.5-flash", "gemini-1.5-pro"],
+    GEMINI_MODEL_BASIC:   ["gemini-1.5-flash", "gemini-1.5-pro"],
+    GEMINI_MODEL_PREMIUM: ["gemini-1.5-pro",   "gemini-1.5-flash"],
 }
 
 TIER_CONFIG = {
     "free": {
         "model": GEMINI_MODEL_FREE,
         "lifetime_quota": 3,
+        "monthly_quota": 3,          # FIX 4: added so billing/tier endpoint doesn't KeyError
         "ai_edits_per_month": 1,
         "has_word_editor": True,
         "has_ai_editor": False,
@@ -112,10 +95,6 @@ TIER_CONFIG = {
 # ============================================================
 # 🗺️ SMARTGIAOAN LOCALIZATION VAULT (v2.8)
 # ============================================================
-# These lists feed the Dynamic Game Director. They are injected into the AI
-# system prompt so every worksheet feels locally relevant to Vietnamese kids.
-# We use random.sample() at prompt-build time so no two worksheets are identical.
-
 VIETNAM_CITIES = [
     "Hanoi", "Hai Phong", "Ha Long", "Sapa", "Ninh Binh",
     "Dien Bien", "Ha Giang", "Da Nang", "Hue", "Hoi An",
@@ -138,9 +117,6 @@ VIETNAM_FOODS = [
     "rambutan", "mango"
 ]
 
-# The Activity Vault for the Dynamic Game Director.
-# The AI is instructed to pick 3-4 DIFFERENT types from this list every time.
-# DO NOT let the AI fall back to a static "Vocab + Grammar + Writing" formula.
 ACTIVITY_VAULT = [
     "Code Breaker (substitution cipher or number-to-letter puzzle)",
     "Detective Story (fill-in-the-blank narrative with clues)",
@@ -225,12 +201,6 @@ class WorksheetRequest(BaseModel):
     num_questions: int = 24
     grammar_focus: Optional[str] = None
 
-class LessonPlanRequest(BaseModel):
-    level: str
-    cefr: str
-    topic: str
-    duration_weeks: int = 4
-    lessons_per_week: int = 4
 
 class SessionExchangeRequest(BaseModel):
     session_id: str
@@ -290,27 +260,23 @@ async def refresh_user_credits(user: User) -> User:
             needs_reset = _parse_dt(user.monthly_reset_at) < now
         except Exception:
             needs_reset = True
-            
+
     if needs_reset:
         config = TIER_CONFIG.get(user.subscription_tier, TIER_CONFIG["free"])
-        
         updates = {
             "ai_edit_credits": config["ai_edits_per_month"],
             "monthly_reset_at": (now + timedelta(days=30)).isoformat()
         }
-        
-        # Only reset free_used for premium/pro, since free tier's quota is lifetime
         if user.subscription_tier != "free":
             updates["free_used"] = 0
             user.free_used = 0
-            
         await db.users.update_one(
             {"user_id": user.user_id},
             {"$set": updates}
         )
         user.ai_edit_credits = config["ai_edits_per_month"]
         user.monthly_reset_at = now + timedelta(days=30)
-        
+
     return user
 
 async def _create_session(user_id: str, response: Response) -> str:
@@ -328,169 +294,8 @@ async def _create_session(user_id: str, response: Response) -> str:
     return token
 
 # ============================================================
-# API ROUTES — SMART LESSON PLANNER (PREMIUM)
+# GEMINI ENGINE
 # ============================================================
-@api_router.post("/lesson-plans/generate")
-async def generate_lesson_plan(payload: LessonPlanRequest, user: User = Depends(require_tier("premium"))):
-    user       = await refresh_user_credits(user)
-    config     = TIER_CONFIG["premium"]
-    total_cost = payload.duration_weeks * payload.lessons_per_week
-
-    if user.free_used + total_cost > config["monthly_quota"] + user.bonus_credits:
-        raise HTTPException(status_code=402, detail=f"Need {total_cost} credits. Upgrade or reduce weeks.")
-
-    prompt = (
-        f"You are a senior Cambridge ESOL curriculum designer for Vietnamese learners.\n\n"
-        f"Create a {payload.duration_weeks}-week unit plan for {payload.level} (CEFR {payload.cefr}) students.\n"
-        f"Topic: {payload.topic}\nLessons per week: {payload.lessons_per_week}\n\n"
-        "For EACH lesson provide: lesson_title, lesson_type, duration_minutes, "
-        "learning_objectives (array), worksheet_content (full JSON), homework_task, materials_needed.\n\n"
-        "Also include: unit_title, unit_overview, assessment_criteria, "
-        "suggested_extensions_for_advanced_learners, suggested_support_for_weak_learners.\n\n"
-        "Rules:\n- Vietnamese names: Minh, Lan, Huy, Trang, Nam, Linh, Duc, Mai, Khoa, Phuong.\n"
-        "- Vietnamese locations and culture throughout.\n- OUTPUT MUST BE RAW VALID JSON ONLY.\n"
-                "- Structure: {\"unit_title\": \"...\", \"weeks\": [{\"week_number\": 1, \"lessons\": [...]}]}"
-    )
-
-    plan_data = await _run_gemini(prompt, payload.level, model_name=GEMINI_MODEL_PREMIUM)
-    plan_id   = f"lp_{uuid.uuid4().hex[:12]}"
-    plan_doc  = {
-        "plan_id": plan_id, "user_id": user.user_id,
-        "unit_title": plan_data.get("unit_title", f"{payload.topic} Unit"),
-        "level": payload.level, "cefr": payload.cefr, "topic": payload.topic,
-        "duration_weeks": payload.duration_weeks, "content": plan_data,
-        "created_at": _now().isoformat()
-    }
-    await db.lesson_plans.insert_one(plan_doc)
-
-    worksheet_count = 0
-    for week in plan_data.get("weeks", []):
-        for lesson in week.get("lessons", []):
-            if "worksheet_content" in lesson:
-                await db.worksheets.insert_one({
-                    "worksheet_id": f"ws_{uuid.uuid4().hex[:12]}",
-                    "user_id": user.user_id,
-                    "title": lesson.get("lesson_title", "Untitled"),
-                    "level": payload.level, "cefr": payload.cefr,
-                    "skill": lesson.get("lesson_type", "Mixed"), "topic": payload.topic,
-                    "content": lesson["worksheet_content"],
-                    "is_public": False, "parent_plan": plan_id,
-                    "created_at": _now().isoformat()
-                })
-                worksheet_count += 1
-
-    await db.users.update_one({"user_id": user.user_id}, {"$inc": {"free_used": total_cost}})
-    return {
-        "plan_id": plan_id, "unit_title": plan_doc["unit_title"],
-        "worksheets_generated": worksheet_count, "total_lessons": total_cost,
-        "content": plan_data
-    }
-
-@api_router.get("/lesson-plans")
-async def list_lesson_plans(user: User = Depends(require_user)):
-    return await db.lesson_plans.find({"user_id": user.user_id}, {"_id": 0}).sort("created_at", -1).to_list(50)
-
-@api_router.get("/lesson-plans/{plan_id}")
-async def get_lesson_plan(plan_id: str, user: User = Depends(require_user)):
-    plan = await db.lesson_plans.find_one({"plan_id": plan_id, "user_id": user.user_id}, {"_id": 0})
-    if not plan:
-        raise HTTPException(status_code=404, detail="Lesson plan not found")
-    return plan
-
-async def get_current_user_optional(
-    request: Request,
-    session_token: Optional[str] = Cookie(None),
-    authorization: Optional[str] = Header(None)
-) -> Optional[User]:
-    token = session_token
-    if authorization and authorization.lower().startswith("bearer "):
-        token = authorization.split(" ", 1)[1].strip()
-    if not token:
-        auth_header = request.headers.get("Authorization")
-        if auth_header and auth_header.lower().startswith("bearer "):
-            token = auth_header.split(" ", 1)[1].strip()
-    if not token:
-        return None
-    session = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
-    if not session or _parse_dt(session["expires_at"]) < _now():
-        return None
-    doc = await db.users.find_one({"user_id": session["user_id"]}, {"_id": 0})
-    return await _load_user(doc)
-
-async def require_user(user: Optional[User] = Depends(get_current_user_optional)) -> User:
-    if not user:
-        raise HTTPException(status_code=401, detail="Not authenticated or session expired")
-    return user
-
-def require_tier(min_tier: str):
-    tier_order = {"free": 0, "premium": 1, "pro": 2}
-    async def _require_tier(user: User = Depends(require_user)) -> User:
-        user = await refresh_user_credits(user)
-        if tier_order.get(user.subscription_tier, 0) < tier_order.get(min_tier, 0):
-            raise HTTPException(status_code=402, detail=f"{min_tier.capitalize()} subscription required.")
-        return user
-    return _require_tier
-
-# ============================================================
-# PAYPAL HELPERS
-# ============================================================
-async def _paypal_access_token() -> str:
-    if not PAYPAL_CLIENT_ID or not PAYPAL_CLIENT_SECRET:
-        raise HTTPException(status_code=500, detail="PayPal credentials not configured")
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        auth_str = base64.b64encode(f"{PAYPAL_CLIENT_ID}:{PAYPAL_CLIENT_SECRET}".encode()).decode()
-        r = await client.post(
-            f"{PAYPAL_BASE_URL}/v1/oauth2/token",
-            headers={"Authorization": f"Basic {auth_str}"},
-            data={"grant_type": "client_credentials"}
-        )
-        r.raise_for_status()
-        return r.json()["access_token"]
-
-async def verify_paypal_order(order_id: str) -> dict:
-    token = await _paypal_access_token()
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        r = await client.get(
-            f"{PAYPAL_BASE_URL}/v2/checkout/orders/{order_id}",
-            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-        )
-        r.raise_for_status()
-        return r.json()
-
-async def verify_paypal_subscription(subscription_id: str) -> dict:
-    token = await _paypal_access_token()
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        r = await client.get(
-            f"{PAYPAL_BASE_URL}/v1/billing/subscriptions/{subscription_id}",
-            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-        )
-        r.raise_for_status()
-        return r.json()
-
-# ============================================================
-# GEMINI ENGINE - REGIONAL ROUTING FIX
-#
-# WHY YOU SEE "400 User location is not supported":
-#   Render's Singapore servers are geo-blocked by the standard
-#   google-generativeai SDK endpoint (generativelanguage.googleapis.com).
-#   This error is non-retriable - switching models won't help because
-#   EVERY model hits the same IP block.
-#
-# THE CODE FIX (Option A - recommended):
-#   When GOOGLE_APPLICATION_CREDENTIALS_JSON is set, this server uses
-#   the Vertex AI SDK with location="us-central1". This routes traffic
-#   through us-central1-aiplatform.googleapis.com, bypassing the
-#   geo-restriction entirely regardless of where Render hosts the server.
-#
-# THE INFRA FIX (Option B - also do this):
-#   Render Dashboard -> Your Service -> Settings -> Region
-#   Change to: "Oregon (US West)" or "Ohio (US East)"
-#   This fixes the API key path and is good practice regardless.
-#
-# Add this env var to Render:
-#   GEMINI_REGION = us-central1
-# ============================================================
-
 GEMINI_REGION   = os.environ.get('GEMINI_REGION', 'us-central1')
 USE_VERTEX_AI   = False
 _vertex_project = None
@@ -510,11 +315,7 @@ if adc_json_raw:
         import google.auth
         _gcp_creds, _vertex_project = google.auth.default()
 
-        # ── KEY FIX: Vertex AI with explicit US region ────────────────────────
-        # This routes ALL calls through us-central1-aiplatform.googleapis.com,
-        # bypassing the Singapore geo-block on generativelanguage.googleapis.com
         import vertexai
-        # No need to import here, already imported globally
         vertexai.init(project=_vertex_project, location=GEMINI_REGION)
         USE_VERTEX_AI = True
         logger.info(f"AI Engine: Vertex AI | project={_vertex_project} | region={GEMINI_REGION} | geo-block bypassed ✓")
@@ -544,12 +345,7 @@ def _is_location_error(exc: Exception) -> bool:
 
 
 def _build_model(model_name: str, system_instruction: str):
-    """
-    Return the appropriate model instance.
-    Vertex AI path routes through us-central1, bypassing geo-restrictions.
-    """
     if USE_VERTEX_AI:
-        from vertexai.generative_models import GenerativeModel as VertexModel, GenerationConfig
         return VertexModel(
             model_name,
             system_instruction=system_instruction,
@@ -566,42 +362,16 @@ def _build_model(model_name: str, system_instruction: str):
 
 
 def build_system_prompt(level: str, skill: str = "", topic: str = "", num_questions: int = 24) -> str:
-    """
-    Builds the Gemini system prompt for worksheet generation.
-
-    CRITICAL: This function uses random.sample() to inject localized Vietnamese
-    content every single time. This guarantees unpredictability.
-
-    Args:
-        level: 'Kindergarten', 'Primary', 'Secondary', or 'IELTS'.
-        skill: The skill focus (reading, writing, grammar, vocabulary, listening, mixed).
-        topic: The user's requested topic (e.g., 'Animals', 'Daily Routines').
-        num_questions: Requested number of items (used as a soft hint only for K/Primary).
-
-    Returns:
-        A fully formatted system prompt string.
-    """
-
-    # -------------------------------------------------------------------------
-    # 1. DYNAMIC INJECTION: Pick fresh random samples for THIS worksheet.
-    # -------------------------------------------------------------------------
     selected_cities     = random.sample(VIETNAM_CITIES,     k=2)
     selected_landmarks  = random.sample(VIETNAM_LANDMARKS,  k=2)
     selected_foods      = random.sample(VIETNAM_FOODS,      k=3)
-    selected_activities = random.sample(ACTIVITY_VAULT,     k=4)  # The Director's pick
+    selected_activities = random.sample(ACTIVITY_VAULT,     k=4)
 
-    # Build a human-readable string of the selected activities for the prompt
     activity_directive = "\n".join(
         f"    {i+1}. {act}" for i, act in enumerate(selected_activities)
     )
 
-    # -------------------------------------------------------------------------
-    # 2. FORMATTING RULES: Kindergarten/Primary vs. Secondary/IELTS
-    # -------------------------------------------------------------------------
-    # We use a conditional block because the rules are fundamentally different.
-
     if level in ("Kindergarten", "Primary"):
-        # K / PRIMARY EXEMPTION: No 3-Page Rule. Spacious 1-to-2 pages max.
         formatting_rules = f"""
 FORMAT RULES (Kindergarten / Primary — MANDATORY):
 - You are generating a worksheet for YOUNG LEARNERS (ages 4-11).
@@ -614,7 +384,6 @@ FORMAT RULES (Kindergarten / Primary — MANDATORY):
 - Kindergarten: count tasks, not questions. 6-10 tasks = full worksheet.
 """
     else:
-        # SECONDARY / IELTS: Keep the strict 3-Page pedagogical structure.
         formatting_rules = f"""
 FORMAT RULES (Secondary / IELTS — MANDATORY):
 - You MUST follow the strict 3-Page Rule:
@@ -626,7 +395,6 @@ FORMAT RULES (Secondary / IELTS — MANDATORY):
 - IELTS: one full passage + question set (15-20 items) is one complete worksheet.
 """
 
-    # Listening-specific rule
     listening_rule = (
         "LISTENING WORKSHEET RULE: You MUST include a listening_script field at the top level "
         "of the JSON. This is the full text of the audio track the teacher will read aloud. "
@@ -634,9 +402,6 @@ FORMAT RULES (Secondary / IELTS — MANDATORY):
         if skill and skill.lower() == "listening" else ""
     )
 
-    # -------------------------------------------------------------------------
-    # 3. THE MASTER PROMPT
-    # -------------------------------------------------------------------------
     prompt = f"""You are SmartGiaoAn, an expert Vietnamese ESL worksheet designer.
 
 LOCALIZED CONTEXT FOR THIS WORKSHEET (use these naturally in activities):
@@ -737,19 +502,14 @@ CONTENT GUIDELINES:
 - Vietnamese culture & food: Tet, Mid-Autumn Festival, ao dai, dong ho paintings, water puppetry, pho, banh mi, bun bo Hue, com tam, banh xeo, che, ca phe trung, xe om, motorbike culture, family-centred values, ancestor worship, five-fruit tray
 """
     return prompt
+
+
 async def _run_gemini(prompt: str, level: str, model_name: str, skill: str = "", topic: str = "", num_questions: int = 24) -> dict:
-    """
-    Run Gemini with:
-      1. Vertex AI regional routing (bypasses geo-block when ADC is configured)
-      2. Fail-fast on location errors — no pointless retries across models
-      3. Fallback model chain for model-not-found / quota errors
-      4. Up to 3 retries per model for timeout / empty / JSON errors
-    """
     system_instruction = build_system_prompt(level, skill=skill, topic=topic, num_questions=num_questions)
 
     seen: set = set()
     model_chain = [
-        m for m in ([model_name] + _GEMINI_FALLBACKS.get(model_name, ["gemini-2.5-flash", "gemini-2.0-flash"]))
+        m for m in ([model_name] + _GEMINI_FALLBACKS.get(model_name, ["gemini-1.5-flash"]))
         if not (m in seen or seen.add(m))
     ]
 
@@ -798,7 +558,6 @@ async def _run_gemini(prompt: str, level: str, model_name: str, skill: str = "",
                     logger.warning(f"[Gemini] Used fallback '{current_model}' (primary '{model_name}' was unavailable)")
                 return parsed
 
-            # ── Geo-restriction: FAIL FAST — retrying with other models won't help ──
             except GoogleBadRequest as e:
                 if _is_location_error(e):
                     raise HTTPException(status_code=503, detail=(
@@ -809,7 +568,6 @@ async def _run_gemini(prompt: str, level: str, model_name: str, skill: str = "",
                 last_error = f"Bad request: {e}"
                 logger.error(f"[Gemini] {last_error} (attempt {attempt+1})")
 
-            # ── Any exception with location message — same fail-fast ──────────────
             except Exception as e:
                 if _is_location_error(e):
                     raise HTTPException(status_code=503, detail=(
@@ -817,12 +575,10 @@ async def _run_gemini(prompt: str, level: str, model_name: str, skill: str = "",
                         "IMMEDIATE FIX: Render Dashboard → Settings → Region → 'Oregon (US West)'. "
                         "PERMANENT FIX: Add GOOGLE_APPLICATION_CREDENTIALS_JSON env var to use Vertex AI routing."
                     ))
-                # ── Model not found → break inner, try next model ─────────────────
                 if isinstance(e, (NotFound, InvalidArgument)):
                     last_error = f"Model not found: {e}"
                     logger.warning(f"[Gemini] {last_error} — trying fallback")
                     break
-                # ── Timeout ───────────────────────────────────────────────────────
                 if isinstance(e, asyncio.TimeoutError):
                     last_error = "Timed out after 90s"
                     logger.error(f"[Gemini] {last_error} (attempt {attempt+1})")
@@ -843,6 +599,32 @@ async def _run_gemini(prompt: str, level: str, model_name: str, skill: str = "",
 # ============================================================
 # API ROUTES — AUTH
 # ============================================================
+async def get_current_user_optional(
+    request: Request,
+    session_token: Optional[str] = Cookie(None),
+    authorization: Optional[str] = Header(None)
+) -> Optional[User]:
+    token = session_token
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1].strip()
+    if not token:
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.lower().startswith("bearer "):
+            token = auth_header.split(" ", 1)[1].strip()
+    if not token:
+        return None
+    session = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
+    if not session or _parse_dt(session["expires_at"]) < _now():
+        return None
+    doc = await db.users.find_one({"user_id": session["user_id"]}, {"_id": 0})
+    return await _load_user(doc)
+
+async def require_user(user: Optional[User] = Depends(get_current_user_optional)) -> User:
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated or session expired")
+    return user
+
+
 @api_router.post("/auth/register")
 async def auth_register(payload: EmailAuthRequest, response: Response):
     email = payload.email.strip().lower()
@@ -952,13 +734,6 @@ async def generate_ws(payload: WorksheetRequest, user: User = Depends(require_us
     user   = await refresh_user_credits(user)
     config = TIER_CONFIG.get(user.subscription_tier, TIER_CONFIG["free"])
 
-    # if user.subscription_tier == "free":
-    #     if user.free_used >= config["lifetime_quota"] + user.bonus_credits:
-    #         raise HTTPException(status_code=402, detail="Free quota reached. Upgrade to Premium for unlimited worksheets.")
-    # else:
-    #     if user.free_used >= config["monthly_quota"] + user.bonus_credits:
-    #         raise HTTPException(status_code=402, detail="Monthly quota reached. Upgrade for more.")
-
     should_show_sponsor = False
     sponsor_duration    = 0
     if user.subscription_tier == "free" and user.free_used > 0:
@@ -967,9 +742,22 @@ async def generate_ws(payload: WorksheetRequest, user: User = Depends(require_us
         if should_show_sponsor:
             sponsor_duration = random.choice([15, 30, 60])
 
-    # ── UPDATED PROMPT ────────────────────────────────────────────────────────
-    prompt = f"""Create one complete, print-ready ESL worksheet using these exact specifications.\n\nLEVEL: {payload.level} (CEFR {payload.cefr})\nSKILL: {payload.skill}\nTOPIC: {payload.topic}\nGRAMMAR FOCUS: {payload.grammar_focus or 'Choose the most appropriate grammar point for this level and topic'}\nNUMBER OF ITEMS: {payload.num_questions} (honour this exactly — never pad, never exceed 32)\n\nSTRICT RULES:\n1. LOCALISATION — Localise everything to Vietnam by default. Use Vietnamese names, places, food, and culture naturally throughout the passage and all example sentences. Only use international contexts if the topic genuinely requires it.\n2. LEVEL CEILING — Every word, sentence, and instruction must be strictly within the {payload.cefr} CEFR vocabulary ceiling. Do not use language above this level anywhere.\n3. READING PASSAGE — If applicable, the passage must read like a real story or authentic text with a character, a setting, and an event. Never a list of facts.\n4. GRAMMAR IN CONTEXT — Weave '{payload.grammar_focus or 'the chosen grammar point'}' into the passage and practice sections naturally. Never drill grammar in isolation.\n5. ANSWER KEY — The answer_key array must contain the correct answer for every single numbered item without exception. No item may be missing.\n6. TEACHER NOTES — Must reference at least one Vietnamese L1 interference error specific to this grammar point or skill.\n7. OUTPUT — Return ONLY the raw JSON matching the schema in your instructions. No markdown. No code fences. No preamble."""
-    # ── END UPDATED PROMPT ───────────────────────────────────────────────────
+    prompt = (
+        f"Create one complete, print-ready ESL worksheet using these exact specifications.\n\n"
+        f"LEVEL: {payload.level} (CEFR {payload.cefr})\n"
+        f"SKILL: {payload.skill}\n"
+        f"TOPIC: {payload.topic}\n"
+        f"GRAMMAR FOCUS: {payload.grammar_focus or 'Choose the most appropriate grammar point for this level and topic'}\n"
+        f"NUMBER OF ITEMS: {payload.num_questions} (honour this exactly — never pad, never exceed 32)\n\n"
+        "STRICT RULES:\n"
+        f"1. LOCALISATION — Localise everything to Vietnam by default. Use Vietnamese names, places, food, and culture naturally throughout the passage and all example sentences.\n"
+        f"2. LEVEL CEILING — Every word, sentence, and instruction must be strictly within the {payload.cefr} CEFR vocabulary ceiling.\n"
+        "3. READING PASSAGE — If applicable, the passage must read like a real story or authentic text with a character, a setting, and an event. Never a list of facts.\n"
+        f"4. GRAMMAR IN CONTEXT — Weave '{payload.grammar_focus or 'the chosen grammar point'}' into the passage and practice sections naturally.\n"
+        "5. ANSWER KEY — The answer_key array must contain the correct answer for every single numbered item without exception.\n"
+        "6. TEACHER NOTES — Must reference at least one Vietnamese L1 interference error specific to this grammar point or skill.\n"
+        "7. OUTPUT — Return ONLY the raw JSON matching the schema in your instructions. No markdown. No code fences. No preamble."
+    )
 
     ws_data = await _run_gemini(prompt, payload.level, model_name=config["model"], skill=payload.skill, topic=payload.topic, num_questions=payload.num_questions)
     ws_id   = f"ws_{uuid.uuid4().hex[:12]}"
@@ -1012,31 +800,28 @@ async def export_worksheet_docx(worksheet_id: str, user: User = Depends(require_
 
     content = ws.get("content", {})
     title = content.get("title", ws.get("title", "Untitled Worksheet"))
-    
+
     document = Document()
-    
     style = document.styles['Normal']
     font = style.font
     font.name = 'Arial'
     font.size = Pt(11)
-    
+
     heading = document.add_heading(title, 0)
     heading.alignment = 1
-    
+
     if content.get("subtitle"):
         sub = document.add_paragraph(content["subtitle"])
         sub.alignment = 1
-        
+
     document.add_paragraph("Name: ____________________\t\tDate: __________\t\tScore: _____/100")
-    
+
     def add_question(doc, q, num):
         q_text = q if isinstance(q, str) else q.get("question", q.get("sentence", q.get("prompt", q.get("text", str(q)))))
         doc.add_paragraph(f"{num}. {q_text}")
-        
         options = []
         if isinstance(q, dict):
             options = q.get("options", q.get("choices", []))
-            
         if options:
             for opt_idx, opt in enumerate(options):
                 opt_text = opt if isinstance(opt, str) else opt.get("text", opt.get("label", str(opt)))
@@ -1054,14 +839,12 @@ async def export_worksheet_docx(worksheet_id: str, user: User = Depends(require_
             document.add_paragraph(passage.get("text", ""))
         else:
             document.add_paragraph(str(passage))
-            
+
     vocab = content.get("vocabulary")
     if vocab:
         document.add_heading("Vocabulary", level=1)
-        glossary = vocab.get("glossary", [])
-        for item in glossary:
+        for item in vocab.get("glossary", []):
             document.add_paragraph(f"{item.get('word', '')} — {item.get('definition', '')}")
-        
         for ex_idx, ex in enumerate(vocab.get("exercises", [])):
             instructions = ex.get("instructions", ex.get("prompt", f"Exercise {ex_idx+1}"))
             document.add_heading(instructions, level=2)
@@ -1083,13 +866,12 @@ async def export_worksheet_docx(worksheet_id: str, user: User = Depends(require_
         document.add_heading(f"Grammar{': ' + focus if focus else ''}", level=1)
         if grammar.get("explanation"):
             document.add_paragraph(grammar["explanation"])
-            
         for ex_idx, ex in enumerate(grammar.get("exercises", [])):
             instructions = ex.get("instructions", ex.get("prompt", f"Exercise {ex_idx+1}"))
             document.add_heading(instructions, level=2)
             for i, q in enumerate(ex.get("items", ex.get("questions", []))):
                 add_question(document, q, i+1)
-                
+
     exercises = content.get("exercises")
     if exercises:
         for ex_idx, ex in enumerate(exercises):
@@ -1108,7 +890,7 @@ async def export_worksheet_docx(worksheet_id: str, user: User = Depends(require_
             for q in sec.get("questions", []):
                 num = q.get("number", "?")
                 add_question(document, q, num)
-                
+
     writing = content.get("writing") or content.get("writing_task")
     if writing:
         document.add_heading("Writing Task", level=1)
@@ -1116,17 +898,15 @@ async def export_worksheet_docx(worksheet_id: str, user: User = Depends(require_
             task = writing.get("task") or writing.get("prompt")
             if task:
                 document.add_paragraph(task)
-            document.add_paragraph("\n")
-            for _ in range(8):
-                document.add_paragraph("_________________________________________________________________________________________")
+        document.add_paragraph("\n")
+        for _ in range(8):
+            document.add_paragraph("_________________________________________________________________________________________")
 
     file_stream = io.BytesIO()
     document.save(file_stream)
     file_stream.seek(0)
-    
-    headers = {
-        'Content-Disposition': f'attachment; filename="{title}.docx"'
-    }
+
+    headers = {'Content-Disposition': f'attachment; filename="{title}.docx"'}
     return Response(
         content=file_stream.read(),
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -1145,14 +925,14 @@ async def update_worksheet(worksheet_id: str, payload: UpdateWorksheetRequest, u
     return {"status": "updated"}
 
 # ============================================================
-# API ROUTES — AI EDITOR (PREMIUM)
+# API ROUTES — AI EDITOR
 # ============================================================
 @api_router.post("/worksheets/ai-edit")
 async def ai_edit_worksheet(payload: AIEditRequest, user: User = Depends(require_user)):
     user = await refresh_user_credits(user)
     if user.ai_edit_credits < 1:
         raise HTTPException(status_code=402, detail="No AI edit credits remaining. You get 1 free edit per month, or unlimited with Premium.")
-    
+
     ws = await db.worksheets.find_one({"worksheet_id": payload.worksheet_id, "user_id": user.user_id})
     if not ws:
         raise HTTPException(status_code=404, detail="Worksheet not found")
@@ -1164,7 +944,6 @@ async def ai_edit_worksheet(payload: AIEditRequest, user: User = Depends(require
         "- Preserve existing structure.\n- Only modify what was requested.\n- OUTPUT MUST BE RAW JSON ONLY."
     )
 
-    # Use the appropriate model based on their tier
     config = TIER_CONFIG.get(user.subscription_tier, TIER_CONFIG["free"])
     edited = await _run_gemini(edit_prompt, ws["level"], model_name=config["model"])
     await db.users.update_one({"user_id": user.user_id}, {"$inc": {"ai_edit_credits": -1}})
@@ -1180,77 +959,6 @@ async def ai_edit_worksheet(payload: AIEditRequest, user: User = Depends(require
     }
     await db.worksheets.insert_one(new_doc)
     return {k: v for k, v in new_doc.items() if k != "_id"}
-
-# ============================================================
-# API ROUTES — SMART LESSON PLANNER (PREMIUM)
-# ============================================================
-@api_router.post("/lesson-plans/generate")
-async def generate_lesson_plan(payload: LessonPlanRequest, user: User = Depends(require_tier("premium"))):
-    user       = await refresh_user_credits(user)
-    config     = TIER_CONFIG["premium"]
-    total_cost = payload.duration_weeks * payload.lessons_per_week
-
-    if user.free_used + total_cost > config["monthly_quota"] + user.bonus_credits:
-        raise HTTPException(status_code=402, detail=f"Need {total_cost} credits. Upgrade or reduce weeks.")
-
-    prompt = (
-                f"You are a senior Cambridge ESOL curriculum designer for Vietnamese learners.\n\n"
-                f"Create a {payload.duration_weeks}-week unit plan for {payload.level} (CEFR {payload.cefr}) students.\n"
-                f"Topic: '{payload.topic}'\nLessons per week: {payload.lessons_per_week}\n\n"
-                "For EACH lesson provide: lesson_title, lesson_type, duration_minutes, "
-                "learning_objectives (array), worksheet_content (full JSON), homework_task, materials_needed.\n\n"
-                "Also include: unit_title, unit_overview, assessment_criteria, "
-                "suggested_extensions_for_advanced_learners, suggested_support_for_weak_learners.\n\n"
-                "Rules:\n- Vietnamese names: Minh, Lan, Huy, Trang, Nam, Linh, Duc, Mai, Khoa, Phuong.\n"
-                "- Vietnamese locations and culture throughout.\n- OUTPUT MUST BE RAW VALID JSON ONLY.\n"
-                '- Structure: {"unit_title": "...", "weeks": [{"week_number": 1, "lessons": [...]}]}'
-            )
-
-
-    plan_data = await _run_gemini(prompt, payload.level, model_name=GEMINI_MODEL_PREMIUM)
-    plan_id   = f"lp_{uuid.uuid4().hex[:12]}"
-    plan_doc  = {
-        "plan_id": plan_id, "user_id": user.user_id,
-        "unit_title": plan_data.get("unit_title", f"{payload.topic} Unit"),
-        "level": payload.level, "cefr": payload.cefr, "topic": payload.topic,
-        "duration_weeks": payload.duration_weeks, "content": plan_data,
-        "created_at": _now().isoformat()
-    }
-    await db.lesson_plans.insert_one(plan_doc)
-
-    worksheet_count = 0
-    for week in plan_data.get("weeks", []):
-        for lesson in week.get("lessons", []):
-            if "worksheet_content" in lesson:
-                await db.worksheets.insert_one({
-                    "worksheet_id": f"ws_{uuid.uuid4().hex[:12]}",
-                    "user_id": user.user_id,
-                    "title": lesson.get("lesson_title", "Untitled"),
-                    "level": payload.level, "cefr": payload.cefr,
-                    "skill": lesson.get("lesson_type", "Mixed"), "topic": payload.topic,
-                    "content": lesson["worksheet_content"],
-                    "is_public": False, "parent_plan": plan_id,
-                    "created_at": _now().isoformat()
-                })
-                worksheet_count += 1
-
-    await db.users.update_one({"user_id": user.user_id}, {"$inc": {"free_used": total_cost}})
-    return {
-        "plan_id": plan_id, "unit_title": plan_doc["unit_title"],
-        "worksheets_generated": worksheet_count, "total_lessons": total_cost,
-        "content": plan_data
-    }
-
-@api_router.get("/lesson-plans")
-async def list_lesson_plans(user: User = Depends(require_user)):
-    return await db.lesson_plans.find({"user_id": user.user_id}, {"_id": 0}).sort("created_at", -1).to_list(50)
-
-@api_router.get("/lesson-plans/{plan_id}")
-async def get_lesson_plan(plan_id: str, user: User = Depends(require_user)):
-    plan = await db.lesson_plans.find_one({"plan_id": plan_id, "user_id": user.user_id}, {"_id": 0})
-    if not plan:
-        raise HTTPException(status_code=404, detail="Lesson plan not found")
-    return plan
 
 # ============================================================
 # API ROUTES — REWARDED ADS
@@ -1321,24 +1029,11 @@ async def public_library_feed_xml(
         ]
 
     pipeline = [
-        {"$match": query},
-        {"$sort": {"created_at": -1}},
-        {"$limit": 100},
-        {"$lookup": {
-            "from": "users",
-            "localField": "user_id",
-            "foreignField": "user_id",
-            "as": "author"
-        }},
+        {"$match": query}, {"$sort": {"created_at": -1}}, {"$limit": 100},
+        {"$lookup": {"from": "users", "localField": "user_id", "foreignField": "user_id", "as": "author"}},
         {"$project": {
-            "_id": 0,
-            "worksheet_id": 1,
-            "title": 1,
-            "level": 1,
-            "cefr": 1,
-            "skill": 1,
-            "topic": 1,
-            "created_at": 1,
+            "_id": 0, "worksheet_id": 1, "title": 1, "level": 1, "cefr": 1,
+            "skill": 1, "topic": 1, "created_at": 1,
             "author_name": {"$ifNull": [{"$arrayElemAt": ["$author.name", 0]}, "Anonymous Teacher"]}
         }}
     ]
@@ -1356,18 +1051,16 @@ async def public_library_feed_xml(
             f"({xml_escape(ws['cefr'])}) — {xml_escape(ws['skill'])}{topic_text}."
         )
         url = f"https://www.smartgiaoan.site/worksheet/{xml_escape(ws['worksheet_id'])}"
-        entries.append(
-            "\n".join([
-                "  <entry>",
-                f"    <id>{url}</id>",
-                f"    <title>{ws_title}</title>",
-                f"    <link href=\"{url}\" />",
-                f"    <updated>{xml_escape(ws['created_at'])}</updated>",
-                f"    <summary>{summary}</summary>",
-                f"    <author><name>{xml_escape(ws['author_name'])}</name></author>",
-                "  </entry>"
-            ])
-        )
+        entries.append("\n".join([
+            "  <entry>",
+            f"    <id>{url}</id>",
+            f"    <title>{ws_title}</title>",
+            f"    <link href=\"{url}\" />",
+            f"    <updated>{xml_escape(ws['created_at'])}</updated>",
+            f"    <summary>{summary}</summary>",
+            f"    <author><name>{xml_escape(ws['author_name'])}</name></author>",
+            "  </entry>"
+        ]))
 
     feed = "\n".join([
         "<?xml version=\"1.0\" encoding=\"utf-8\"?>",
@@ -1407,13 +1100,15 @@ async def clone_worksheet(worksheet_id: str, user: User = Depends(require_user))
 async def get_tier(user: User = Depends(require_user)):
     user   = await refresh_user_credits(user)
     config = TIER_CONFIG.get(user.subscription_tier, TIER_CONFIG["free"])
+    # FIX 4: Use .get() with a safe fallback so free tier (which has lifetime_quota, not monthly_quota) doesn't crash
+    monthly_quota = config.get("monthly_quota", config.get("lifetime_quota", 3))
     return {
         "tier": user.subscription_tier,
         "is_premium": user.is_premium,
-        "monthly_quota": config["monthly_quota"],
+        "monthly_quota": monthly_quota,
         "used_this_month": user.free_used,
         "remaining_this_month": (
-            max(0, config["monthly_quota"] + user.bonus_credits - user.free_used)
+            max(0, monthly_quota + user.bonus_credits - user.free_used)
             if user.subscription_tier != "free" else "unlimited"
         ),
         "ai_edit_credits": user.ai_edit_credits,
@@ -1436,7 +1131,7 @@ async def paypal_capture(payload: PayPalCaptureRequest, user: User = Depends(req
                 raise HTTPException(status_code=400, detail=f"Subscription not active: {sub.get('status')}")
         except HTTPException:
             raise
-        except Exception as e:
+        except Exception:
             raise HTTPException(status_code=400, detail="PayPal verification failed")
         tier = "premium" if payload.product_type == "premium_monthly" else "pro"
         await db.users.update_one({"user_id": user.user_id}, {"$set": {
@@ -1486,165 +1181,156 @@ async def downgrade(user: User = Depends(require_user)):
     return {"status": "downgraded_to_free"}
 
 # ============================================================
+# PAYPAL HELPERS
+# ============================================================
+async def _paypal_access_token() -> str:
+    if not PAYPAL_CLIENT_ID or not PAYPAL_CLIENT_SECRET:
+        raise HTTPException(status_code=500, detail="PayPal credentials not configured")
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        auth_str = base64.b64encode(f"{PAYPAL_CLIENT_ID}:{PAYPAL_CLIENT_SECRET}".encode()).decode()
+        r = await client.post(
+            f"{PAYPAL_BASE_URL}/v1/oauth2/token",
+            headers={"Authorization": f"Basic {auth_str}"},
+            data={"grant_type": "client_credentials"}
+        )
+        r.raise_for_status()
+        return r.json()["access_token"]
+
+async def verify_paypal_order(order_id: str) -> dict:
+    token = await _paypal_access_token()
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        r = await client.get(
+            f"{PAYPAL_BASE_URL}/v2/checkout/orders/{order_id}",
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        )
+        r.raise_for_status()
+        return r.json()
+
+async def verify_paypal_subscription(subscription_id: str) -> dict:
+    token = await _paypal_access_token()
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        r = await client.get(
+            f"{PAYPAL_BASE_URL}/v1/billing/subscriptions/{subscription_id}",
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        )
+        r.raise_for_status()
+        return r.json()
+
+# ============================================================
 # API ROUTES — PAYPAL WEBHOOKS
 # ============================================================
 @api_router.post("/webhooks/paypal")
 async def paypal_webhook(request: Request):
     try:
-            # Validate webhook signature
-            paypal_cert_url = request.headers.get("paypal-transmission-certurl")
-            paypal_sig = request.headers.get("paypal-transmission-sig")
-            paypal_time = request.headers.get("paypal-transmission-time")
-            webhook_id = os.environ.get("PAYPAL_WEBHOOK_ID") # Stored in .env
-            if not all([paypal_cert_url, paypal_sig, paypal_time, webhook_id]):
-                logger.warning("Missing PayPal webhook headers or WEBHOOK_ID.")
-                raise HTTPException(status_code=400, detail="Missing PayPal webhook headers or WEBHOOK_ID.")
+        paypal_cert_url         = request.headers.get("paypal-transmission-certurl")
+        paypal_transmission_id  = request.headers.get("paypal-transmission-id")
+        paypal_transmission_time= request.headers.get("paypal-transmission-time")
+        paypal_auth_algo        = request.headers.get("paypal-auth-algo")
+        paypal_transmission_sig = request.headers.get("paypal-transmission-sig")
+        paypal_webhook_id       = os.environ.get("PAYPAL_WEBHOOK_ID")
 
-            # Reconstruct the signed data
-            body = await request.body()
-            headers = request.headers
-            paypal_transmission_id = headers.get("paypal-transmission-id")
-            paypal_transmission_time = headers.get("paypal-transmission-time")
-            paypal_cert_url = headers.get("paypal-transmission-certurl")
-            paypal_auth_algo = headers.get("paypal-auth-algo")
-            paypal_webhook_id = os.environ.get("PAYPAL_WEBHOOK_ID")
-            paypal_transmission_sig = headers.get("paypal-transmission-sig")
+        if not all([paypal_cert_url, paypal_transmission_id, paypal_transmission_time,
+                    paypal_auth_algo, paypal_webhook_id, paypal_transmission_sig]):
+            logger.warning("Missing PayPal webhook headers or WEBHOOK_ID.")
+            raise HTTPException(status_code=400, detail="Missing PayPal webhook headers or WEBHOOK_ID.")
 
-            if not all([paypal_transmission_id, paypal_transmission_time, paypal_cert_url,
-                        paypal_auth_algo, paypal_webhook_id, paypal_transmission_sig]):
-                logger.error("Missing PayPal webhook headers.")
-                raise HTTPException(status_code=400, detail="Missing PayPal webhook headers.")
+        body = await request.body()
 
-            # Reconstruct the signed data
-            message = paypal_transmission_id + "|" + paypal_cert_url + "|" + paypal_transmission_time + "|" + paypal_webhook_id + "|" + body.decode("utf-8")
-            
-            # Verify the signature (this is a simplified example, real verification is more complex)
-            # For a real application, you would fetch the certificate from paypal_cert_url, 
-            # extract the public key, and use it to verify the signature.
-            # This example only logs the event, but for a production app, you\`d perform full verification.
-            # TODO: Implement actual PayPal webhook signature verification
-            # if not await _verify_paypal_webhook_signature(request):
-            #     logger.error("PayPal webhook signature verification failed.")
-            #     raise HTTPException(status_code=403, detail="Webhook signature verification failed.")
+        verification_data = {
+            "transmission_id":   paypal_transmission_id,
+            "transmission_time": paypal_transmission_time,
+            "cert_url":          paypal_cert_url,
+            "auth_algo":         paypal_auth_algo,
+            "transmission_sig":  paypal_transmission_sig,
+            "webhook_id":        paypal_webhook_id,
+            "webhook_event":     json.loads(body)
+        }
 
-            verification_data = {
-                "transmission_id": paypal_transmission_id,
-                "transmission_time": paypal_transmission_time,
-                "cert_url": paypal_cert_url,
-                "auth_algo": paypal_auth_algo,
-                "transmission_sig": paypal_transmission_sig,
-                "webhook_id": paypal_webhook_id,
-                "webhook_event": json.loads(body)
-            }
-            
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                verify_url = f"{PAYPAL_BASE_URL}/v1/notifications/verify-webhook-signature"
-                response = await client.post(verify_url, json=verification_data)
-                response.raise_for_status()
-                verification_status = response.json()
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            verify_url = f"{PAYPAL_BASE_URL}/v1/notifications/verify-webhook-signature"
+            r = await client.post(verify_url, json=verification_data)
+            r.raise_for_status()
+            verification_status = r.json()
 
-            if verification_status.get("verification_status") != "SUCCESS":
-                logger.error(f"PayPal webhook verification failed: {verification_status}")
-                raise HTTPException(status_code=403, detail="PayPal webhook verification failed.")
+        if verification_status.get("verification_status") != "SUCCESS":
+            logger.error(f"PayPal webhook verification failed: {verification_status}")
+            raise HTTPException(status_code=403, detail="PayPal webhook verification failed.")
 
-            data = json.loads(body)
-            event_type = data.get("event_type", "")
-            resource = data.get("resource", {})
-            logger.info(f"PayPal webhook event received: {event_type}")
+        data       = json.loads(body)
+        event_type = data.get("event_type", "")
+        resource   = data.get("resource", {})
+        logger.info(f"PayPal webhook event received: {event_type}")
 
-            # Extract custom_id for user identification (assuming it\'s passed during subscription creation)
-            # The custom_id would ideally be in the form of "user_xxx"
-            custom_id = resource.get("custom_id") or resource.get("subscriber", {}).get("custom_id", "")
-            if not custom_id or not custom_id.startswith("user_"):
-                logger.warning(f"PayPal webhook received with missing or invalid custom_id: {custom_id}")
-                return {"status": "ignored", "message": "Missing or invalid custom_id"}
+        custom_id = resource.get("custom_id") or resource.get("subscriber", {}).get("custom_id", "")
+        if not custom_id or not custom_id.startswith("user_"):
+            logger.warning(f"PayPal webhook received with missing or invalid custom_id: {custom_id}")
+            return {"status": "ignored", "message": "Missing or invalid custom_id"}
 
-            sub_id = resource.get("id", "")
-            plan_id = resource.get("plan_id", "") # Useful for distinguishing between Premium and Pro plans
+        sub_id  = resource.get("id", "")
+        plan_id = resource.get("plan_id", "")
 
-            if event_type == "BILLING.SUBSCRIPTION.ACTIVATED":
-                tier = "premium" # Default to premium
-                if plan_id == os.environ.get("PAYPAL_PRO_PLAN_ID"): 
-                    tier = "pro"
-                
-                await db.users.update_one({"user_id": custom_id}, {"$set": {
-                    "subscription_tier": tier, "is_premium": True, "free_used": 0,
-                    "ai_edit_credits": TIER_CONFIG[tier]["ai_edits_per_month"],
-                    "monthly_reset_at": (_now() + timedelta(days=30)).isoformat(),
-                    "paypal_subscription_id": sub_id
-                }})
-                logger.info(f"User {custom_id} activated {tier} subscription {sub_id}")
+        if event_type == "BILLING.SUBSCRIPTION.ACTIVATED":
+            tier = "pro" if plan_id == os.environ.get("PAYPAL_PRO_PLAN_ID") else "premium"
+            await db.users.update_one({"user_id": custom_id}, {"$set": {
+                "subscription_tier": tier, "is_premium": True, "free_used": 0,
+                "ai_edit_credits": TIER_CONFIG[tier]["ai_edits_per_month"],
+                "monthly_reset_at": (_now() + timedelta(days=30)).isoformat(),
+                "paypal_subscription_id": sub_id
+            }})
+            logger.info(f"User {custom_id} activated {tier} subscription {sub_id}")
 
-            elif event_type == "BILLING.SUBSCRIPTION.CANCELLED" or event_type == "BILLING.SUBSCRIPTION.EXPIRED":
-                await db.users.update_one({"user_id": custom_id}, {"$set": {
-                    "subscription_tier": "free", "is_premium": False,
-                    "paypal_subscription_id": None, "ai_edit_credits": 0
-                }})
-                logger.info(f"User {custom_id} subscription {sub_id} cancelled/expired.")
+        elif event_type in ("BILLING.SUBSCRIPTION.CANCELLED", "BILLING.SUBSCRIPTION.EXPIRED"):
+            await db.users.update_one({"user_id": custom_id}, {"$set": {
+                "subscription_tier": "free", "is_premium": False,
+                "paypal_subscription_id": None, "ai_edit_credits": 0
+            }})
+            logger.info(f"User {custom_id} subscription {sub_id} cancelled/expired.")
 
-            elif event_type == "BILLING.SUBSCRIPTION.SUSPENDED":
-                await db.users.update_one({"user_id": custom_id}, {"$set": {
-                    "subscription_tier": "free", "is_premium": False,
-                    "ai_edit_credits": 0 # Retain paypal_subscription_id to potentially re-activate
-                }})
-                logger.warning(f"User {custom_id} subscription {sub_id} suspended.")
+        elif event_type == "BILLING.SUBSCRIPTION.SUSPENDED":
+            await db.users.update_one({"user_id": custom_id}, {"$set": {
+                "subscription_tier": "free", "is_premium": False, "ai_edit_credits": 0
+            }})
+            logger.warning(f"User {custom_id} subscription {sub_id} suspended.")
 
-            elif event_type == "BILLING.SUBSCRIPTION.RE-ACTIVATED":
-                tier = "premium"
-                if plan_id == os.environ.get("PAYPAL_PRO_PLAN_ID"): 
-                    tier = "pro"
-                await db.users.update_one({"user_id": custom_id}, {"$set": {
-                    "subscription_tier": tier, "is_premium": True, "free_used": 0,
-                    "ai_edit_credits": TIER_CONFIG[tier]["ai_edits_per_month"],
-                    "monthly_reset_at": (_now() + timedelta(days=30)).isoformat(),
-                    "paypal_subscription_id": sub_id
-                }})
-                logger.info(f"User {custom_id} subscription {sub_id} re-activated to {tier}.")
+        elif event_type == "BILLING.SUBSCRIPTION.RE-ACTIVATED":
+            tier = "pro" if plan_id == os.environ.get("PAYPAL_PRO_PLAN_ID") else "premium"
+            await db.users.update_one({"user_id": custom_id}, {"$set": {
+                "subscription_tier": tier, "is_premium": True, "free_used": 0,
+                "ai_edit_credits": TIER_CONFIG[tier]["ai_edits_per_month"],
+                "monthly_reset_at": (_now() + timedelta(days=30)).isoformat(),
+                "paypal_subscription_id": sub_id
+            }})
+            logger.info(f"User {custom_id} subscription {sub_id} re-activated to {tier}.")
 
-            elif event_type == "BILLING.SUBSCRIPTION.UPDATED":
-                tier = "premium"
-                if plan_id == os.environ.get("PAYPAL_PRO_PLAN_ID"): 
-                    tier = "pro"
-                await db.users.update_one({"user_id": custom_id}, {"$set": {
-                    "subscription_tier": tier, 
-                    "ai_edit_credits": TIER_CONFIG[tier]["ai_edits_per_month"],
-                    "monthly_reset_at": (_now() + timedelta(days=30)).isoformat() # Reset monthly quota
-                }})
-                logger.info(f"User {custom_id} subscription {sub_id} updated to {tier}.")
+        elif event_type == "BILLING.SUBSCRIPTION.UPDATED":
+            tier = "pro" if plan_id == os.environ.get("PAYPAL_PRO_PLAN_ID") else "premium"
+            await db.users.update_one({"user_id": custom_id}, {"$set": {
+                "subscription_tier": tier,
+                "ai_edit_credits": TIER_CONFIG[tier]["ai_edits_per_month"],
+                "monthly_reset_at": (_now() + timedelta(days=30)).isoformat()
+            }})
+            logger.info(f"User {custom_id} subscription {sub_id} updated to {tier}.")
 
-            elif event_type == "PAYMENT.SALE.COMPLETED":
-                # Handle one-time payments (e.g., for AI edit packs)
-                # Assume custom_id format: "user_ID-product_type"
-                if "-" in custom_id:
-                    user_id_part, product_type = custom_id.split("-", 1)
-                    if product_type == "ai_edit_pack":
-                        await db.users.update_one({"user_id": user_id_part}, {"$inc": {"ai_edit_credits": 10}})
-                        logger.info(f"User {user_id_part} received 10 AI edit credits from one-time payment.")
-                    else:
-                        logger.warning(f"Unhandled one-time product type: {product_type} for user {user_id_part}")
+        elif event_type == "PAYMENT.SALE.COMPLETED":
+            if "-" in custom_id:
+                user_id_part, product_type = custom_id.split("-", 1)
+                if product_type == "ai_edit_pack":
+                    await db.users.update_one({"user_id": user_id_part}, {"$inc": {"ai_edit_credits": 10}})
+                    logger.info(f"User {user_id_part} received 10 AI edit credits from one-time payment.")
                 else:
-                    logger.warning(f"One-time payment without product_type in custom_id: {custom_id}")
-
+                    logger.warning(f"Unhandled one-time product type: {product_type} for user {user_id_part}")
             else:
-                logger.info(f"Unhandled PayPal webhook event: {event_type}")
+                logger.warning(f"One-time payment without product_type in custom_id: {custom_id}")
+        else:
+            logger.info(f"Unhandled PayPal webhook event: {event_type}")
 
+        return {"status": "ok"}
 
-            # Example for verifying PayPal webhooks. In a production environment,
-            # you MUST verify the authenticity of the webhook to ensure it comes from PayPal.
-            # This typically involves:
-            # 1. Fetching the certificate chain from paypal-transmission-certurl.
-            # 2. Validating the certificate chain.
-            # 3. Reconstructing the signed message.
-            # 4. Verifying the paypal-transmission-sig using the public key from the certificate.
-            # For simplicity, this example skips full verification, but it's crucial for security.
-            # Refer to PayPal's documentation for exact verification steps:
-            # https://developer.paypal.com/api/rest/webhooks/validate-events/
-
-
-            return {"status": "ok"}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"PayPal webhook error: {e}")
-    return {"status": "ok"}
+        return {"status": "ok"}
 
 # ============================================================
 # MIDDLEWARE & ROUTING
