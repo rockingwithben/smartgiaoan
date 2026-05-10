@@ -19,11 +19,13 @@ export default function PublicLibrary() {
   const [searchQuery, setSearchQuery] = useState('');
   const [cloningId, setCloningId] = useState(null);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     fetchLibrary();
   }, [activeLevel, activeSkill]);
 
   // Debounce search
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const timer = setTimeout(() => {
       fetchLibrary();

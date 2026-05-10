@@ -7,6 +7,7 @@ import { Loader2, Sparkles, FileText, Crown, Filter, ArrowUpDown, ChevronLeft, C
 import { PaywallModal } from '../components/PaywallModal';
 import SponsorRewardedModal from '../components/SponsorRewardedModal';
 import SponsorModal from '../components/SponsorModal';
+import PayPalButton from '../components/PayPalButton'; // CRITICAL: Added missing import
 
 const LEVELS = ['Kindergarten', 'Primary 1-2', 'Primary 3-4', 'Primary 5-6', 'Secondary', 'IELTS'];
 const CEFR = ['Pre-A1', 'A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
@@ -217,6 +218,14 @@ export default function Dashboard() {
                 </span>
               )}
             </p>
+            {/* Need more AI Magic section */}
+            {tierInfo?.tier === 'premium' && (
+              <div className="mt-4 p-4 bg-white rounded-2xl border border-gray-200">
+                <h4 className="font-semibold text-gray-900 mb-2">Need more AI Magic? ✨</h4>
+                <p className="text-sm text-gray-600 mb-3">Get 10 extra AI Editor credits for £2.00. Credits never expire.</p>
+                <PayPalButton product_type="ai_edit_pack" />
+              </div>
+            )}
           </div>
         </div>
 

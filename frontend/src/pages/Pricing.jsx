@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useI18n } from '../lib/i18n';
 import { PageShell } from '../components/PageShell';
@@ -10,6 +10,52 @@ export default function Pricing() {
   const { lang, t } = useI18n();
   const { user, startLogin } = useAuth();
   const [loading, setLoading] = useState(null);
+  
+  // Dynamic Currency State
+  const [currencyCode, setCurrencyCode] = useState('GBP');
+  const [exchangeRate, setExchangeRate] = useState(1);
+
+  // Fetch User's IP Location & Exchange Rate on load
+  useEffect(() => {
+    async function fetchLocalCurrency() {
+      try {
+        // 1. Get user location/currency from free IP API
+        const geoRes = await fetch('https://ipapi.co/json/');
+        const geoData = await geoRes.json();
+        const localCurrency = geoData.currency || 'GBP';
+
+        if (localCurrency === 'GBP') return; // Default is fine
+
+        // 2. Get live exchange rate against our base GBP
+        const rateRes = await fetch('https://open.er-api.com/v6/latest/GBP');
+        const rateData = await rateRes.json();
+        
+        if (rateData && rateData.rates[localCurrency]) {
+          setCurrencyCode(localCurrency);
+          setExchangeRate(rateData.rates[localCurrency]);
+        }
+      } catch (err) {
+        console.error('Could not fetch local currency, defaulting to GBP', err);
+      }
+    }
+    fetchLocalCurrency();
+  }, []);
+
+  // Helper to format the price mathematically
+  const formatPrice = (gbpAmount) => {
+    if (gbpAmount === 0) return currencyCode === 'GBP' ? '£0' : new Intl.NumberFormat(undefined, { style: 'currency', currency: currencyCode, minimumFractionDigits: 0 }).format(0);
+    
+    const localAmount = gbpAmount * exchangeRate;
+    // Currencies like VND and JPY shouldn't show decimal places
+    const noDecimals = ['VND', 'JPY', 'KRW'].includes(currencyCode);
+    
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: currencyCode,
+      minimumFractionDigits: noDecimals ? 0 : 2,
+      maximumFractionDigits: noDecimals ? 0 : 2,
+    }).format(localAmount);
+  };
 
   const activateTest = async (tier) => {
     if (!user) {
@@ -34,15 +80,12 @@ export default function Pricing() {
     intro: 'Start free with unlimited worksheets — just watch an ad now and then. Upgrade when you want zero interruptions.',
     free_h: 'Free',
     free_sub: 'Unlimited worksheets, occasional ads.',
-    free_price: '£0',
     free_period: 'forever',
     basic_h: 'Basic',
     basic_sub: 'No ads. 50 worksheets/month.',
-    basic_price: '£5.67',
     basic_period: '/ month',
     premium_h: 'Premium',
-    premium_sub: 'Best AI. AI Editor. Unlimited.',
-    premium_price: '£9.99',
+    premium_sub: 'Best AI. Claude. 50 Smart Edits/month.',
     premium_period: '/ month',
     most_popular: 'Most Popular',
     cta_free: 'Get Started',
@@ -50,7 +93,7 @@ export default function Pricing() {
     cta_premium: 'Go Premium',
     activating: 'Activating...',
     word_editor: 'Word Editor — edit any worksheet',
-    ai_editor: 'AI Editor — 50 smart edits/month',
+    ai_editor: 'Claude — 50 Smart Edits/month',
     ai_editor_extra: 'Buy more edits or earn via ads',
     unlimited: 'Unlimited',
     worksheets: 'worksheets/month',
@@ -58,13 +101,12 @@ export default function Pricing() {
     model_pro: 'AI: Gemini Pro',
     no_ads: 'Zero ads',
     ads: 'Random ads (15s–60s)',
-    public_library: 'Public Library',
     print_pdf: 'Print & PDF export',
     fair_h: 'A note on fairness',
     fair_b: 'We don\'t do auto-renewing yearly contracts. We don\'t hide a "cancel" button three menus deep. You pay when SmartGiaoAn helps you. You stop when it doesn\'t.',
     login_to_upgrade: 'Log in to upgrade',
     ai_edit_pack: 'AI Edit Pack',
-    ai_edit_pack_desc: '10 extra AI edits — £5 one-time',
+    ai_edit_pack_desc: '10 extra AI edits — one-time payment',
   };
 
   const vi = {
@@ -73,15 +115,12 @@ export default function Pricing() {
     intro: 'Bắt đầu miễn phí với bài tập không giới hạn — chỉ xem quảng cáo thỉnh thoảng. Nâng cấp khi muốn không bị gián đoạn.',
     free_h: 'Miễn phí',
     free_sub: 'Bài tập không giới hạn, QC thỉnh thoảng.',
-    free_price: '£0',
     free_period: 'vĩnh viễn',
     basic_h: 'Cơ bản',
     basic_sub: 'Không QC. 50 bài/tháng.',
-    basic_price: '£5.67',
     basic_period: '/ tháng',
     premium_h: 'Cao cấp',
-    premium_sub: 'AI tốt nhất. AI Editor. Không giới hạn.',
-    premium_price: '£9.99',
+    premium_sub: 'AI tốt nhất. Claude. 50 chỉnh sửa/tháng.',
     premium_period: '/ tháng',
     most_popular: 'Phổ biến nhất',
     cta_free: 'Bắt đầu',
@@ -89,7 +128,7 @@ export default function Pricing() {
     cta_premium: 'Nâng cấp Cao cấp',
     activating: 'Đang kích hoạt...',
     word_editor: 'Word Editor — sửa bất kỳ bài tập',
-    ai_editor: 'AI Editor — 50 chỉnh sửa thông minh/tháng',
+    ai_editor: 'Claude — 50 chỉnh sửa thông minh/tháng',
     ai_editor_extra: 'Mua thêm hoặc kiếm qua QC',
     unlimited: 'Không giới hạn',
     worksheets: 'bài tập/tháng',
@@ -97,13 +136,12 @@ export default function Pricing() {
     model_pro: 'AI: Gemini Pro',
     no_ads: 'Không quảng cáo',
     ads: 'QC ngẫu nhiên (15s–60s)',
-    public_library: 'Thư viện cộng đồng',
     print_pdf: 'In & tải PDF',
     fair_h: 'Một lời về sự công bằng',
     fair_b: 'Chúng tôi không có hợp đồng năm tự gia hạn. Không giấu nút "huỷ" sau ba menu. Bạn trả khi SmartGiaoAn giúp bạn. Bạn ngừng trả khi không.',
     login_to_upgrade: 'Đăng nhập để nâng cấp',
     ai_edit_pack: 'Gói AI Edit',
-    ai_edit_pack_desc: '10 chỉnh sửa AI thêm — £5 một lần',
+    ai_edit_pack_desc: '10 chỉnh sửa AI thêm — thanh toán một lần',
   };
 
   const tt = lang === 'vi' ? vi : en;
@@ -113,15 +151,13 @@ export default function Pricing() {
       key: 'free',
       name: tt.free_h,
       sub: tt.free_sub,
-      price: tt.free_price,
+      price: formatPrice(0),
       period: tt.free_period,
       icon: <Sparkles className="w-5 h-5" />,
       features: [
         tt.unlimited + ' ' + tt.worksheets,
         tt.model_flash,
         tt.ads,
-        tt.word_editor,
-        tt.public_library,
         tt.print_pdf,
       ],
       cta: tt.cta_free,
@@ -133,7 +169,7 @@ export default function Pricing() {
       key: 'basic',
       name: tt.basic_h,
       sub: tt.basic_sub,
-      price: tt.basic_price,
+      price: formatPrice(5.67),
       period: tt.basic_period,
       icon: <Zap className="w-5 h-5" />,
       features: [
@@ -141,7 +177,6 @@ export default function Pricing() {
         tt.model_flash,
         tt.no_ads,
         tt.word_editor,
-        tt.public_library,
         tt.print_pdf,
       ],
       cta: tt.cta_basic,
@@ -153,7 +188,7 @@ export default function Pricing() {
       key: 'premium',
       name: tt.premium_h,
       sub: tt.premium_sub,
-      price: tt.premium_price,
+      price: formatPrice(9.99),
       period: tt.premium_period,
       icon: <Crown className="w-5 h-5" />,
       features: [
@@ -163,7 +198,6 @@ export default function Pricing() {
         tt.word_editor,
         tt.ai_editor,
         tt.ai_editor_extra,
-        tt.public_library,
         tt.print_pdf,
       ],
       cta: tt.cta_premium,
@@ -193,32 +227,6 @@ export default function Pricing() {
               description: 'Cambridge & CEFR-aligned ESL worksheets localized for Vietnam. Print-ready in seconds.',
               brand: { '@id': 'https://www.smartgiaoan.site/#organization' },
               category: 'Education',
-              offers: [
-                {
-                  '@type': 'Offer',
-                  name: 'Free',
-                  price: '0',
-                  priceCurrency: 'GBP',
-                  availability: 'https://schema.org/InStock',
-                  url: 'https://www.smartgiaoan.site/pricing',
-                },
-                {
-                  '@type': 'Offer',
-                  name: 'Basic',
-                  price: '5.67',
-                  priceCurrency: 'GBP',
-                  availability: 'https://schema.org/InStock',
-                  url: 'https://www.smartgiaoan.site/pricing',
-                },
-                {
-                  '@type': 'Offer',
-                  name: 'Premium',
-                  price: '9.99',
-                  priceCurrency: 'GBP',
-                  availability: 'https://schema.org/InStock',
-                  url: 'https://www.smartgiaoan.site/pricing',
-                }
-              ]
             }
           ]
         })}
@@ -303,8 +311,10 @@ export default function Pricing() {
           <h3 className="font-display text-2xl mt-2">{tt.ai_edit_pack_desc}</h3>
         </div>
         <div className="md:col-span-4 text-right">
-          <div className="font-display text-4xl">£5</div>
-          <span className="overline text-muted-foreground">one-time</span>
+          <div className="font-display text-4xl">{formatPrice(5.00)}</div>
+          <span className="overline text-muted-foreground">
+             {lang === 'vi' ? 'một lần' : 'one-time'}
+          </span>
         </div>
       </div>
 
@@ -315,6 +325,13 @@ export default function Pricing() {
       </div>
 
       <p className="text-center text-xs text-muted-foreground mt-12">
+        {currencyCode !== 'GBP' && (
+          <span className="block mb-1">
+             {lang === 'vi' 
+               ? '* Giá được hiển thị bằng nội tệ để tiện tham khảo. Thanh toán cuối cùng sẽ được xử lý bằng Bảng Anh (GBP) qua hệ thống bảo mật của PayPal.' 
+               : '* Prices shown in your local currency for convenience. Final secure checkout is processed in GBP by PayPal.'}
+          </span>
+        )}
         {lang === 'vi' 
           ? 'Nút PayPal thật sẽ sớm có. Dùng nút thử nghiệm ở trên để demo.' 
           : 'Real PayPal buttons coming soon. Use test toggles above for demo.'}
