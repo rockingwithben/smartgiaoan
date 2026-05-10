@@ -53,14 +53,14 @@ CORS_ORIGINS = [o.strip() for o in _cors_env.split(',') if o.strip()] or [
 #         Using gemini-2.0-flash as a stable, capable default.
 #         Only defined ONCE (previously defined 3 times — removed duplicates).
 # ============================================================
-GEMINI_MODEL_FREE    = "gemini-2.0-flash"
+GEMINI_MODEL_FREE    = "openrouter/free"
 GEMINI_MODEL_BASIC   = "gemini-2.0-flash"
 GEMINI_MODEL_PREMIUM = "gemini-2.0-flash"
 
 _GEMINI_FALLBACKS = {
-    GEMINI_MODEL_FREE:    ["gemini-1.5-flash", "gemini-1.5-pro"],
-    GEMINI_MODEL_BASIC:   ["gemini-1.5-flash", "gemini-1.5-pro"],
-    GEMINI_MODEL_PREMIUM: ["gemini-1.5-pro",   "gemini-1.5-flash"],
+    GEMINI_MODEL_FREE: ["google/gemma-3-27b:free", "meta-llama/llama-3.3-70b-instruct:free"],
+    GEMINI_MODEL_BASIC: ["gemini-1.5-flash", "gemini-1.5-pro"],
+    GEMINI_MODEL_PREMIUM: ["gemini-1.5-pro", "gemini-1.5-flash"],
 }
 
 TIER_CONFIG = {
@@ -302,6 +302,7 @@ _vertex_project = None
 
 adc_json_raw = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS_JSON', '').strip()
 api_key      = os.environ.get('GEMINI_API_KEY', '').strip()
+OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY', '').strip()
 
 if adc_json_raw:
     try:
@@ -521,42 +522,71 @@ async def _run_gemini(prompt: str, level: str, model_name: str, skill: str = "",
             f"engine={'vertex/' + GEMINI_REGION if USE_VERTEX_AI else 'genai/api-key'}"
         )
 
-        try:
-            model = _build_model(current_model, system_instruction)
-        except Exception as e:
-            last_error = f"Model build failed: {e}"
-            logger.warning(f"[Gemini] {last_error} — skipping '{current_model}'")
-            continue
-
         for attempt in range(3):
             try:
-                result = await asyncio.wait_for(
-                    asyncio.to_thread(model.generate_content, prompt),
-                    timeout=90.0
-                )
+                if current_model.startswith("openrouter/") or ":free" in current_model:
+                    # BRANCH A: OpenRouter via HTTPX
+                    logger.info(f"[OpenRouter] Routing request to {current_model}")
+                    headers = {
+                        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                        "HTTP-Referer": "https://smartgiaoan.site",
+                        "Content-Type": "application/json"
+                    }
+                    payload = {
+                        "model": current_model,
+                        "messages": [
+                            {"role": "system", "content": system_instruction},
+                            {"role": "user", "content": prompt}
+                        ],
+                        "response_format": {"type": "json_object"}
+                    }
 
-                if not result.candidates:
-                    feedback = getattr(result, 'prompt_feedback', None)
-                    block_reason = getattr(feedback, 'block_reason', 'Unknown') if feedback else 'Unknown'
-                    last_error = f"Content blocked: {block_reason}"
-                    logger.warning(f"[Gemini] {last_error}")
-                    await asyncio.sleep(1)
-                    continue
+                    async with httpx.AsyncClient(timeout=90.0) as client:
+                        resp = await client.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
+                        resp.raise_for_status()
+                        data = resp.json()
+                        raw = data['choices'][0]['message']['content'].strip()
+                else:
+                    # BRANCH B: Existing Google/Vertex AI SDK
+                    model = _build_model(current_model, system_instruction)
+                    result = await asyncio.wait_for(
+                        asyncio.to_thread(model.generate_content, prompt),
+                        timeout=90.0
+                    )
+                    if not result.candidates:
+                        feedback = getattr(result, 'prompt_feedback', None)
+                        block_reason = getattr(feedback, 'block_reason', 'Unknown') if feedback else 'Unknown'
+                        last_error = f"Content blocked: {block_reason}"
+                        logger.warning(f"[Gemini] {last_error}")
+                        await asyncio.sleep(1)
+                        continue
+                    raw = result.text.strip()
 
-                raw = result.text.strip()
+                # --- SHARED JSON PARSING (Keep your existing regex/json parsing here) ---
                 if not raw:
                     last_error = "Empty response"
-                    logger.warning(f"[Gemini] {last_error} (attempt {attempt+1})")
+                    logger.warning(f"[AI] {last_error} (attempt {attempt+1})")
                     await asyncio.sleep(1)
                     continue
 
-                raw = re.sub(r'^```(?:json)?\s*', '', raw, flags=re.IGNORECASE)
-                raw = re.sub(r'\s*```$', '', raw).strip()
+                raw = re.sub(r'^(?:json)?\s*', '', raw, flags=re.IGNORECASE)
+                raw = re.sub(r'\s*$', '', raw).strip()
                 parsed = json.loads(raw)
 
                 if current_model != model_name:
-                    logger.warning(f"[Gemini] Used fallback '{current_model}' (primary '{model_name}' was unavailable)")
+                    logger.warning(f"[AI] Used fallback '{current_model}' (primary '{model_name}' was unavailable)")
+
                 return parsed
+
+            except httpx.HTTPStatusError as e:
+                last_error = f"OpenRouter HTTP error: {e}"
+                logger.error(f"[OpenRouter] {last_error} (attempt {attempt+1})")
+                await asyncio.sleep(1)
+
+            except httpx.RequestError as e:
+                last_error = f"OpenRouter request error: {e}"
+                logger.error(f"[OpenRouter] {last_error} (attempt {attempt+1})")
+                await asyncio.sleep(1)
 
             except GoogleBadRequest as e:
                 if _is_location_error(e):
