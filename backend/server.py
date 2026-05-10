@@ -1322,7 +1322,7 @@ async def paypal_webhook(request: Request):
             }})
             logger.warning(f"User {custom_id} subscription {sub_id} suspended.")
 
-        elif event_type == "BILLING.SUBSCRIPTION.RE-ACTIVATED":
+        elif event_type in ("BILLING.SUBSCRIPTION.RE-ACTIVATED", "BILLING.SUBSCRIPTION.REACTIVATED"):
             tier = "pro" if plan_id == os.environ.get("PAYPAL_PRO_PLAN_ID") else "premium"
             await db.users.update_one({"user_id": custom_id}, {"$set": {
                 "subscription_tier": tier, "is_premium": True, "free_used": 0,
@@ -1340,6 +1340,14 @@ async def paypal_webhook(request: Request):
                 "monthly_reset_at": (_now() + timedelta(days=30)).isoformat()
             }})
             logger.info(f"User {custom_id} subscription {sub_id} updated to {tier}.")
+
+        elif event_type == "BILLING.SUBSCRIPTION.PAYMENT.FAILED":
+            # PayPal will retry; we just log + flag the user. Keep tier active until SUSPENDED/CANCELLED.
+            logger.warning(f"User {custom_id} subscription {sub_id} payment failed (PayPal will retry).")
+
+        elif event_type == "BILLING.SUBSCRIPTION.CREATED":
+            # Subscription created but not yet ACTIVATED — no DB change needed.
+            logger.info(f"User {custom_id} subscription {sub_id} created (awaiting activation).")
 
         elif event_type == "PAYMENT.SALE.COMPLETED":
             if "-" in custom_id:

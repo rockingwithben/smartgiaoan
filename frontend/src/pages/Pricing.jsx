@@ -3,8 +3,13 @@ import { Link } from 'react-router-dom';
 import { useI18n } from '../lib/i18n';
 import { PageShell } from '../components/PageShell';
 import { useAuth } from '../lib/auth';
-import { http } from '../lib/api';
+import { capturePayPal } from '../lib/api';
+import { PayPalButton } from '../components/PayPalButton';
+import { toast } from 'sonner';
 import { Check, Zap, Crown, Sparkles, Loader, Lock } from 'lucide-react';
+
+const PLAN_PREMIUM = process.env.REACT_APP_PAYPAL_PREMIUM_PLAN_ID || 'P-53940113VL329025BNH7A3UQ';
+const PLAN_PRO     = process.env.REACT_APP_PAYPAL_PRO_PLAN_ID     || 'P-40482060EU873762GNH7A6YI';
 
 export default function Pricing() {
   const { lang, t } = useI18n();
@@ -57,18 +62,15 @@ export default function Pricing() {
     }).format(localAmount);
   };
 
-  const activateTest = async (tier) => {
-    if (!user) {
-      startLogin();
-      return;
-    }
-    setLoading(tier);
+  const handlePayPalSuccess = async (subscriptionID, product_type) => {
+    setLoading(product_type);
     try {
-      const endpoint = tier === 'basic' ? '/billing/mark-basic' : '/billing/mark-premium';
-      await http.post(endpoint);
-      window.location.href = '/dashboard';
+      await capturePayPal(subscriptionID, product_type);
+      toast.success('Subscription activated! Redirecting…');
+      setTimeout(() => { window.location.href = '/dashboard'; }, 800);
     } catch (e) {
-      alert(e?.response?.data?.detail || 'Failed to activate. Please try again.');
+      toast.error('Could not instantly activate — webhook will catch it shortly.');
+      setTimeout(() => { window.location.href = '/dashboard'; }, 1500);
     } finally {
       setLoading(null);
     }
@@ -180,7 +182,8 @@ export default function Pricing() {
         tt.print_pdf,
       ],
       cta: tt.cta_basic,
-      ctaAction: () => activateTest('basic'),
+      planId: PLAN_PREMIUM,
+      productType: 'premium_monthly',
       highlight: true,
       locked: !user,
     },
@@ -201,7 +204,8 @@ export default function Pricing() {
         tt.print_pdf,
       ],
       cta: tt.cta_premium,
-      ctaAction: () => activateTest('premium'),
+      planId: PLAN_PRO,
+      productType: 'pro_monthly',
       highlight: false,
       locked: !user,
     },
@@ -286,18 +290,30 @@ export default function Pricing() {
                 <Lock className="w-4 h-4" />
                 {tt.login_to_upgrade}
               </button>
+            ) : tier.planId ? (
+              <div className="mt-8">
+                {loading === tier.productType ? (
+                  <div className="text-center text-sm font-medium text-gray-500 py-3 inline-flex items-center justify-center gap-2 w-full">
+                    <Loader className="w-4 h-4 animate-spin" />
+                    {tt.activating}
+                  </div>
+                ) : (
+                  <PayPalButton
+                    planId={tier.planId}
+                    onSuccess={(subId) => handlePayPalSuccess(subId, tier.productType)}
+                  />
+                )}
+              </div>
             ) : (
               <button
                 onClick={tier.ctaAction}
-                disabled={loading === tier.key}
-                className={`mt-8 w-full inline-flex items-center justify-center gap-2 px-6 py-3 rounded-sm font-medium transition-all hover:-translate-y-[1px] disabled:opacity-50 ${
+                className={`mt-8 w-full inline-flex items-center justify-center gap-2 px-6 py-3 rounded-sm font-medium transition-all hover:-translate-y-[1px] ${
                   tier.highlight
                     ? 'bg-terracotta hover:bg-terracotta-hover text-white'
                     : 'bg-gray-900 hover:bg-gray-800 text-white'
                 }`}
               >
-                {loading === tier.key && <Loader className="w-4 h-4 animate-spin" />}
-                {loading === tier.key ? tt.activating : tier.cta}
+                {tier.cta}
               </button>
             )}
           </div>
@@ -327,14 +343,14 @@ export default function Pricing() {
       <p className="text-center text-xs text-muted-foreground mt-12">
         {currencyCode !== 'GBP' && (
           <span className="block mb-1">
-             {lang === 'vi' 
-               ? '* Giá được hiển thị bằng nội tệ để tiện tham khảo. Thanh toán cuối cùng sẽ được xử lý bằng Bảng Anh (GBP) qua hệ thống bảo mật của PayPal.' 
+             {lang === 'vi'
+               ? '* Giá được hiển thị bằng nội tệ để tiện tham khảo. Thanh toán cuối cùng sẽ được xử lý bằng Bảng Anh (GBP) qua hệ thống bảo mật của PayPal.'
                : '* Prices shown in your local currency for convenience. Final secure checkout is processed in GBP by PayPal.'}
           </span>
         )}
-        {lang === 'vi' 
-          ? 'Nút PayPal thật sẽ sớm có. Dùng nút thử nghiệm ở trên để demo.' 
-          : 'Real PayPal buttons coming soon. Use test toggles above for demo.'}
+        {lang === 'vi'
+          ? 'Thanh toán an toàn được xử lý bởi PayPal. Huỷ bất kỳ lúc nào.'
+          : 'Secure checkout processed by PayPal. Cancel any time.'}
       </p>
     </PageShell>
   );

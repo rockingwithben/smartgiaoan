@@ -1,49 +1,78 @@
 import React, { useEffect, useRef } from 'react';
 import { toast } from 'sonner';
+import { useAuth } from '../lib/auth';
 
-export function PayPalButton({ planId, onSuccess, onError }) {
+/**
+ * Renders a PayPal subscription button.
+ * IMPORTANT: passes the user's user_id as `custom_id` so the
+ * PayPal webhook can match the subscription back to a user.
+ */
+export function PayPalButton({ planId, onSuccess, onError, customId }) {
   const containerRef = useRef(null);
+  const { user } = useAuth();
+  const finalCustomId = customId || user?.user_id || '';
 
   useEffect(() => {
-    // Make sure the PayPal SDK is loaded and the container exists
     if (!window.paypal || !containerRef.current) return;
+    if (!planId) return;
 
-    // Clear any previous buttons to avoid duplicates during re-renders
+    // Clear previous render to avoid duplicates
     containerRef.current.innerHTML = '';
 
+    let renderedButton;
     try {
-      const button = window.paypal.Buttons({
+      renderedButton = window.paypal.Buttons({
         style: {
           shape: 'pill',
-          color: 'white',
+          color: 'gold',
           layout: 'vertical',
-          label: 'subscribe'
+          label: 'subscribe',
         },
-        createSubscription: function(data, actions) {
-          return actions.subscription.create({
-            plan_id: planId
-          });
-        },
-        onApprove: function(data, actions) {
-          if (onSuccess) {
-            onSuccess(data.subscriptionID);
+        createSubscription: function (data, actions) {
+          const payload = { plan_id: planId };
+          if (finalCustomId) {
+            // PayPal forwards this onto the BILLING.SUBSCRIPTION.* webhook
+            // events on resource.custom_id — REQUIRED by our backend.
+            payload.custom_id = finalCustomId;
           }
+          return actions.subscription.create(payload);
         },
-        onError: function(err) {
-          console.error("PayPal Error:", err);
-          if (onError) {
-            onError(err);
-          } else {
-            toast.error("PayPal checkout encountered an error. Please try again.");
-          }
-        }
+        onApprove: function (data) {
+          if (onSuccess) onSuccess(data.subscriptionID);
+        },
+        onError: function (err) {
+          console.error('PayPal Error:', err);
+          if (onError) onError(err);
+          else toast.error('PayPal checkout encountered an error. Please try again.');
+        },
       });
 
-      button.render(containerRef.current);
+      renderedButton.render(containerRef.current);
     } catch (e) {
-      console.error("Failed to render PayPal button", e);
+      console.error('Failed to render PayPal button', e);
     }
-  }, [planId, onSuccess, onError]);
+
+    return () => {
+      // Best-effort cleanup
+      try {
+        if (renderedButton && typeof renderedButton.close === 'function') {
+          renderedButton.close();
+        }
+      } catch (_) {
+        /* noop */
+      }
+    };
+  }, [planId, finalCustomId, onSuccess, onError]);
+
+  if (!finalCustomId) {
+    return (
+      <div className="text-xs text-center text-gray-500 py-3">
+        Please sign in to subscribe.
+      </div>
+    );
+  }
 
   return <div ref={containerRef} className="w-full min-h-[45px] z-0" />;
 }
+
+export default PayPalButton;

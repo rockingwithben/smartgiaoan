@@ -12,9 +12,9 @@ export function PaywallModal({ open, onClose, onWatchAd }) {
   const [view, setView] = useState('paywall'); // 'paywall' | 'checkout'
   const [activating, setActivating] = useState(false);
 
-  // Hardcoded from the user's setup
-  const PLAN_PREMIUM = 'P-53940113VL329025BNH7A3UQ';
-  const PLAN_PRO = 'P-40482060EU873762GNH7A6YI';
+  // PayPal subscription plan IDs (env-overridable)
+  const PLAN_PREMIUM = process.env.REACT_APP_PAYPAL_PREMIUM_PLAN_ID || 'P-53940113VL329025BNH7A3UQ';
+  const PLAN_PRO     = process.env.REACT_APP_PAYPAL_PRO_PLAN_ID     || 'P-40482060EU873762GNH7A6YI';
 
   if (!open) return null;
 

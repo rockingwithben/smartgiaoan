@@ -10,3 +10,30 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.8
+      # ---- PayPal (LIVE) ---------------------------------------------------
+      # Set the secret values in Render dashboard (sync: false keeps them out of git)
+      - key: PAYPAL_BASE_URL
+        value: https://api-m.paypal.com
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false
+      - key: PAYPAL_PREMIUM_PLAN_ID
+        value: P-53940113VL329025BNH7A3UQ
+      - key: PAYPAL_PRO_PLAN_ID
+        value: P-40482060EU873762GNH7A6YI
+      # ---- Other secrets ---------------------------------------------------
+      - key: MONGO_URL
+        sync: false
+      - key: DB_NAME
+        value: smartgiaoan
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: GOOGLE_APPLICATION_CREDENTIALS_JSON
+        sync: false
+      - key: CORS_ORIGINS
+        value: https://smartgiaoan.site,https://www.smartgiaoan.site
