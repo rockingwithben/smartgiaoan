@@ -202,6 +202,12 @@ export default function Dashboard() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Workspace</h1>
+<button 
+  onClick={() => navigate('/')} 
+  className="text-gray-700 hover:text-black mr-4 flex items-center gap-1"
+>
+  <ChevronLeft size={16} /> Back to Home
+</button>
             <p className="text-gray-500 text-sm mt-1">
               {tierInfo?.tier === 'premium' ? (
                 <span className="inline-flex items-center gap-1 text-purple-600 font-medium">
