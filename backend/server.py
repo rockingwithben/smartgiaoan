@@ -53,14 +53,14 @@ CORS_ORIGINS = [o.strip() for o in _cors_env.split(',') if o.strip()] or [
 #         Using gemini-2.0-flash as a stable, capable default.
 #         Only defined ONCE (previously defined 3 times — removed duplicates).
 # ============================================================
-GEMINI_MODEL_FREE    = "openrouter/free"
+GEMINI_MODEL_FREE    = "google/gemma-3-27b:free"
 GEMINI_MODEL_BASIC   = "gemini-2.0-flash"
 GEMINI_MODEL_PREMIUM = "gemini-2.0-flash"
 
 _GEMINI_FALLBACKS = {
     GEMINI_MODEL_FREE: ["google/gemma-3-27b:free", "meta-llama/llama-3.3-70b-instruct:free"],
-    GEMINI_MODEL_BASIC: ["gemini-1.5-flash", "gemini-1.5-pro"],
-    GEMINI_MODEL_PREMIUM: ["gemini-1.5-pro", "gemini-1.5-flash"],
+    GEMINI_MODEL_BASIC: ["google/gemma-3-27b:free", "meta-llama/llama-3.3-70b-instruct:free"],
+    GEMINI_MODEL_PREMIUM: ["google/gemma-3-27b:free", "meta-llama/llama-3.3-70b-instruct:free"],
 }
 
 TIER_CONFIG = {
@@ -75,7 +75,7 @@ TIER_CONFIG = {
         "ad_frequency_base": 0.3,
     },
     "premium": {
-        "model": GEMINI_MODEL_BASIC,
+        "model": GEMINI_MODEL_FREE,
         "monthly_quota": 999999,
         "ai_edits_per_month": 999999,
         "has_word_editor": True,
@@ -83,7 +83,7 @@ TIER_CONFIG = {
         "has_ads": False,
     },
     "pro": {
-        "model": GEMINI_MODEL_PREMIUM,
+        "model": GEMINI_MODEL_FREE,
         "monthly_quota": 999999,
         "ai_edits_per_month": 999999,
         "has_word_editor": True,
