@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useI18n } from '../lib/i18n';
 import { useAuth } from '../lib/auth';
@@ -8,6 +8,7 @@ import { Footer } from '../components/Footer';
 import { SponsorSlot } from '../components/SponsorSlot';
 import { LEVELS, SKILLS } from '../lib/catalog';
 import { wakeUpServer } from '../lib/api';
+import { motion, useScroll, useTransform, useSpring } from 'framer-motion';
 
 export default function Landing() {
   const { t, lang } = useI18n();
