@@ -1,25 +1,13 @@
-- [ ] Analyze current "Skill" dropdown in Landing.jsx and WorksheetUpload.jsx
-- [ ] Review SKILLS definition in catalog.js
-- [ ] Create SkillToggle component with Uiverse toggle design
-- [ ] Implement multi-select functionality with array state management
-- [ ] Ensure Reading skill is ON by default
-- [ ] Prevent disabling the last active skill
-- [ ] Remove Listening and Speaking skills, keep Reading, Writing, Grammar, Vocabulary
-- [ ] Replace old dropdown with SkillToggle component in WorksheetUpload.jsx
-- [ ] Add responsive card/grid layout
-- [ ] Add ARIA labels and keyboard accessibility
-- [ ] Ensure dark mode compatibility
-- [ ] Test animations and edge cases
-- [ ] Verify all functionality works</path> <content> - [ ] Analyze current "Skill" dropdown in Landing.jsx and WorksheetUpload.jsx
-- [ ] Review SKILLS definition in catalog.js
-- [ ] Create SkillToggle component with Uiverse toggle design
-- [ ] Implement multi-select functionality with array state management
-- [ ] Ensure Reading skill is ON by default
-- [ ] Prevent disabling the last active skill
-- [ ] Remove Listening and Speaking skills, keep Reading, Writing, Grammar, Vocabulary
-- [ ] Replace old dropdown with SkillToggle component in WorksheetUpload.jsx
-- [ ] Add responsive card/grid layout
-- [ ] Add ARIA labels and keyboard accessibility
-- [ ] Ensure dark mode compatibility
-- [ ] Test animations and edge cases
-- [ ] Verify all functionality works
+- [x] Analyze current "Skill" dropdown in Landing.jsx and WorksheetUpload.jsx
+- [x] Review SKILLS definition in catalog.js
+- [x] Create SkillToggle component with Uiverse toggle design
+- [x] Implement multi-select functionality with array state management
+- [x] Ensure Reading skill is ON by default
+- [x] Prevent disabling the last active skill
+- [x] Remove Listening and Speaking skills, keep Reading, Writing, Grammar, Vocabulary
+- [x] Replace old dropdown with SkillToggle component in WorksheetUpload.jsx
+- [x] Add responsive card/grid layout
+- [x] Add ARIA labels and keyboard accessibility
+- [x] Ensure dark mode compatibility
+- [x] Test animations and edge cases
+- [x] Verify all functionality works
