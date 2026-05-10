@@ -7,11 +7,12 @@
   :root {
     --radius: 0.25rem;
   }
-  html {
-    scroll-behavior: smooth;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-  }
+   html {
+     scroll-behavior: smooth;
+     -webkit-font-smoothing: antialiased;
+     -moz-osx-font-smoothing: grayscale;
+     overflow: overlay;
+   }
   body {
     @apply bg-background text-ink;
   }
