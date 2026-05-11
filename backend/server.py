@@ -370,11 +370,43 @@ def _build_model(model_name: str, system_instruction: str):
                 temperature=0.8,
             ),
         )
-    return genai.GenerativeModel(
-        model_name=model_name,
-        system_instruction=system_instruction,
-        generation_config={"response_mime_type": "application/json", "temperature": 0.8},
-    )
+    elif genai: # Check if genai is not None
+        return genai.GenerativeModel(
+            model_name=model_name,
+            system_instruction=system_instruction,
+            generation_config={"response_mime_type": "application/json", "temperature": 0.8},
+        )
+    else:
+        # If genai is None, return a mock or raise a specific error
+        logger.error("AI features are disabled: No Google credentials found.")
+        # Define mock classes locally to avoid polluting global scope if not needed
+        class MockGenerateContentResponse:
+            def __init__(self):
+                self.text = "AI features are currently disabled due to missing credentials."
+                self.candidates = []
+            def __str__(self):
+                return self.text
+
+        class MockGenerativeModel:
+            def __init__(self, model_name, system_instruction, generation_config):
+                self.model_name = model_name
+                self.system_instruction = system_instruction
+                self.generation_config = generation_config
+                logger.warning(f"MockGenerativeModel initialized for {model_name}")
+
+            def start_chat(self, **kwargs):
+                logger.warning("MockGenerativeModel.start_chat called - AI features disabled.")
+                class MockChatSession:
+                    def send_message(self, message, **kwargs):
+                        logger.warning("MockChatSession.send_message called - AI features disabled.")
+                        return MockGenerateContentResponse()
+                return MockChatSession()
+
+            def generate_content(self, prompt, **kwargs):
+                logger.warning("MockGenerativeModel.generate_content called - AI features disabled.")
+                return MockGenerateContentResponse()
+        
+        return MockGenerativeModel(model_name, system_instruction, {"response_mime_type": "application/json", "temperature": 0.8})
 
 
 def build_system_prompt(level: str, skill: str = "", topic: str = "", num_questions: int = 24) -> str:
