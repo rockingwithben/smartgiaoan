@@ -5,7 +5,7 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true); // Start true to prevent the "Flash and Kick"
+  const [loading, setLoading] = useState(true);
 
   const checkAuth = useCallback(async () => {
     try {
@@ -16,9 +16,8 @@ export function AuthProvider({ children }) {
         setUser(null);
       }
     } catch (err) {
-      console.error("Auth check failed:", err);
+      console.error('Auth check failed:', err);
       setUser(null);
-      // Only clear token if it's a genuine 401/auth failure
       if (err.response?.status === 401) {
         localStorage.removeItem('session_token');
       }
@@ -28,28 +27,24 @@ export function AuthProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    // If we are currently in the middle of a Google Callback, 
-    // do NOT run checkAuth yet. Let AuthCallback.jsx handle the state.
     const isCallback = window.location.pathname === '/auth/callback';
-    
     if (!isCallback) {
       checkAuth();
     } else {
-      // We are in callback, stop global loading from interfering
       setLoading(false);
     }
   }, [checkAuth]);
 
   const startLogin = useCallback(() => {
     const redirectUrl = window.location.origin + '/auth/callback';
-    window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
+    window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${process.env.REACT_APP_GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUrl)}&response_type=code&scope=openid%20email%20profile`;
   }, []);
 
   const logout = useCallback(async () => {
     try {
       await apiLogout();
     } catch (e) {
-      console.warn("Logout request failed, clearing local state anyway.");
+      console.warn('Logout request failed, clearing local state anyway.');
     }
     setUser(null);
     localStorage.removeItem('session_token');
