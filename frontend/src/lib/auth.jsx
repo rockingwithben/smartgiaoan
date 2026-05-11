@@ -27,17 +27,16 @@ export function AuthProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    const isCallback = window.location.pathname === '/auth/callback';
-    if (!isCallback) {
-      checkAuth();
-    } else {
-      setLoading(false);
-    }
+    // After the backend handles the OAuth callback and redirects to '/',
+    // checkAuth() will be called to fetch the user.
+    // The 'isCallback' logic is no longer needed as the backend handles the redirect.
+    checkAuth();
   }, [checkAuth]);
 
   const startLogin = useCallback(() => {
-    const redirectUrl = window.location.origin + '/auth/callback';
-    window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${process.env.REACT_APP_GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUrl)}&response_type=code&scope=openid%20email%20profile`;
+    // Update redirect_uri to point to the backend's Google OAuth callback endpoint
+    const backendCallbackUrl = window.location.origin + '/api/auth/google-callback';
+    window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${process.env.REACT_APP_GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(backendCallbackUrl)}&response_type=code&scope=openid%20email%20profile`;
   }, []);
 
   const logout = useCallback(async () => {

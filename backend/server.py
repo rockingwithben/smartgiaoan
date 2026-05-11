@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional
 from datetime import datetime, timezone, timedelta
 from xml.sax.saxutils import escape as xml_escape
+from starlette.responses import RedirectResponse
 
 # Disabling all Google GenAI/Vertex AI imports as they crash on Python 3.14 (protobuf metaclass issue)
 genai = None
@@ -699,49 +700,114 @@ async def auth_login(payload: EmailAuthRequest, response: Response):
     token = await _create_session(doc["user_id"], response)
     return {"user": {k: v for k, v in doc.items() if k not in ["_id", "password_hash"]}, "session_token": token}
 
-@api_router.post("/auth/session")
-async def auth_session_exchange(payload: SessionExchangeRequest, response: Response):
-    sid = payload.session_id.strip()
-    if not sid:
-        raise HTTPException(status_code=400, detail="Missing session ID")
+# New endpoint for Google OAuth callback
+@api_router.get("/auth/google-callback")
+async def google_oauth_callback(
+    request: Request,
+    response: Response,
+    code: Optional[str] = None,
+    state: Optional[str] = None # Note: Frontend does not currently send a 'state' parameter for CSRF protection.
+):
+    if not code:
+        raise HTTPException(status_code=400, detail="Missing authorization code")
+
+    # Retrieve Google API credentials from environment variables
+    google_client_id = os.environ.get('GOOGLE_CLIENT_ID')
+    google_client_secret = os.environ.get('GOOGLE_CLIENT_SECRET')
+    if not google_client_id or not google_client_secret:
+        logger.error("Google OAuth credentials not configured. Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET.")
+        raise HTTPException(status_code=500, detail="Server configuration error: Google OAuth credentials missing.")
+
+    # Construct the redirect URI dynamically to match the frontend
+    frontend_origin = request.url.origin
+    dynamic_redirect_uri = f"{frontend_origin}/auth/callback"
+
+    token_url = "https://oauth2.googleapis.com/token"
+    userinfo_url = "https://www.googleapis.com/oauth2/v3/userinfo"
+
     try:
-        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True, trust_env=False) as hx:
-            r = await hx.get(
-                f"https://accounts.google.com/o/oauth2/token",
-                headers={"Accept": "application/json", "User-Agent": "SmartGiaoAn-Backend/1.0"}
-            )
-            # Removed fallback to auth.emergentagent.com
-            r.raise_for_status()
-            eu = r.json()
+        # 1. Exchange authorization code for tokens
+        token_response = await httpx.AsyncClient().post(
+            token_url,
+            data={
+                "grant_type": "authorization_code",
+                "code": code,
+                "client_id": google_client_id,
+                "client_secret": google_client_secret,
+                "redirect_uri": dynamic_redirect_uri,
+            }
+        )
+        token_response.raise_for_status()
+        tokens = token_response.json()
+        access_token = tokens.get("access_token")
+        id_token = tokens.get("id_token") # id_token contains user info
+
+        if not access_token or not id_token:
+            logger.error(f"Failed to get access_token or id_token from Google: {tokens}")
+            raise HTTPException(status_code=500, detail="Failed to obtain tokens from Google.")
+
+        # 2. Get user info using access token
+        userinfo_response = await httpx.AsyncClient().get(
+            userinfo_url,
+            headers={"Authorization": f"Bearer {access_token}"}
+        )
+        userinfo_response.raise_for_status()
+        user_info = userinfo_response.json()
+
+        email = user_info.get("email")
+        name = user_info.get("name")
+        picture = user_info.get("picture")
+
+        if not email:
+            logger.error(f"User info from Google missing email: {user_info}")
+            raise HTTPException(status_code=500, detail="Could not retrieve user email from Google.")
+
+        # 3. Find or create user in the database
+        user_doc = await db.users.find_one({"email": email})
+        is_admin = email in ADMIN_EMAILS
+
+        if not user_doc:
+            user_id = f"user_{uuid.uuid4().hex[:12]}"
+            user_doc = {
+                "user_id": user_id,
+                "email": email,
+                "name": name or email.split("@")[0],
+                "picture": picture or "",
+                "role": "Teacher", # Default role
+                "is_premium": is_admin,
+                "subscription_tier": "premium" if is_admin else "free",
+                "free_used": 0,
+                "bonus_credits": 0,
+                "ai_edit_credits": 0,
+                "created_at": _now().isoformat()
+            }
+            await db.users.insert_one(user_doc)
+            logger.info(f"New user created: {email}")
+        else:
+            # Update user info if changed (e.g., picture, name)
+            updates = {}
+            if user_doc.get("name") != name and name:
+                updates["name"] = name
+            if user_doc.get("picture") != picture and picture:
+                updates["picture"] = picture
+            if updates:
+                await db.users.update_one({"user_id": user_doc["user_id"]}, {"$set": updates})
+
+        # 4. Create session and set cookie
+        token = await _create_session(user_doc["user_id"], response)
+
+        # 5. Redirect to frontend's home page
+        frontend_redirect_url = frontend_origin + "/"
+        return RedirectResponse(url=frontend_redirect_url, status_code=303)
+
     except HTTPException:
-        raise
+        raise # Re-raise HTTPException to be handled by FastAPI
     except httpx.HTTPStatusError as e:
-        # This error should ideally not happen if Google's token endpoint is used directly
-        raise HTTPException(status_code=401, detail=f"Google Token Error {e.response.status_code}: {e.response.text}")
+        logger.error(f"HTTP error during Google OAuth: {e.response.status_code} - {e.response.text}")
+        raise HTTPException(status_code=500, detail=f"Google OAuth error: {e.response.status_code}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Auth server connection failed: {e}")
-
-    email    = eu.get("email", "").strip().lower()
-    doc      = await db.users.find_one({"email": email})
-    is_admin = email in ADMIN_EMAILS
-    if not doc:
-        user_id = f"user_{uuid.uuid4().hex[:12]}"
-        doc = {
-            "user_id": user_id, "email": email,
-            "name": eu.get("name", email.split("@")[0]),
-            "picture": eu.get("picture", ""), "role": "Teacher",
-            "is_premium": is_admin,
-            "subscription_tier": "premium" if is_admin else "free",
-            "free_used": 0, "bonus_credits": 0, "ai_edit_credits": 0,
-            "created_at": _now().isoformat()
-        }
-        await db.users.insert_one(doc)
-    else:
-        await db.users.update_one({"email": email}, {"$set": {"picture": eu.get("picture", doc.get("picture", ""))}})
-        doc = await db.users.find_one({"email": email})
-
-    token = await _create_session(doc["user_id"], response)
-    return {"user": {k: v for k, v in doc.items() if k not in ["_id", "password_hash"]}, "session_token": token}
+        logger.error(f"An unexpected error occurred during Google OAuth: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {e}")
 
 @api_router.get("/auth/me")
 async def auth_me(user: User = Depends(require_user)):

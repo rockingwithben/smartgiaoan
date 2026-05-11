@@ -43,11 +43,6 @@ export async function getMe() {
   return r.data;
 }
 
-export async function exchangeSession(session_id) {
-  const r = await http.post('/auth/session', { session_id });
-  return r.data;
-}
-
 export async function logout() {
   localStorage.removeItem('session_token');
   delete http.defaults.headers.common['Authorization'];
