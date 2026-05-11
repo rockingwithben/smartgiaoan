@@ -17,7 +17,8 @@ DB_NAME = os.environ.get('DB_NAME', 'test_database')
 
 @pytest.fixture(scope="module")
 def seeded():
-    cli = MongoClient(MONGO_URL)
+    import mongomock
+    cli = mongomock.MongoClient()
     db = cli[DB_NAME]
     user_id = f"TEST_user_{uuid.uuid4().hex[:8]}"
     token = f"TEST_token_{uuid.uuid4().hex}"

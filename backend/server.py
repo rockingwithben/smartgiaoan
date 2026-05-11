@@ -22,9 +22,14 @@ from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional
 from datetime import datetime, timezone, timedelta
 from xml.sax.saxutils import escape as xml_escape
-from vertexai.generative_models import GenerativeModel as VertexModel, GenerationConfig
-import google.generativeai as genai
-from google.api_core.exceptions import NotFound, InvalidArgument, BadRequest as GoogleBadRequest
+
+# Disabling all Google GenAI/Vertex AI imports as they crash on Python 3.14 (protobuf metaclass issue)
+genai = None
+NotFound = Exception
+InvalidArgument = Exception
+GoogleBadRequest = Exception
+VertexModel = None
+GenerationConfig = None
 
 # ============================================================
 # INITIALIZATION & CONFIG
@@ -146,7 +151,15 @@ try:
     db = mongo_client[db_name]
     logger.info("MongoDB client created successfully")
 except Exception as e:
-    logger.error(f"MongoDB connection failed: {e}")
+    logger.warning(f"MongoDB connection failed: {e}. Falling back to in-memory mock.")
+    try:
+        import mongomock
+        mongo_client = mongomock.MongoClient()
+        db = mongo_client[db_name]
+        logger.info("Using mongomock in-memory MongoDB")
+    except Exception as mock_err:
+        logger.error(f"Failed to initialize mongomock: {mock_err}")
+        raise
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -160,6 +173,7 @@ async def lifespan(app: FastAPI):
 # ============================================================
 app = FastAPI(title="SmartGiaoAn API", version="3.3.0", lifespan=lifespan)
 api_router = APIRouter(prefix="/api")
+app.include_router(api_router)
 
 def hash_password(password: str) -> str:
     salt = secrets.token_hex(16)

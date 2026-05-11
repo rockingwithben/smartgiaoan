@@ -48,13 +48,13 @@ def generate_seo_metadata(html_content, worksheet_data=None):
 
     update_or_create_meta('description', description)
     update_or_create_meta('keywords', keywords)
-    update_or_create_meta('og:title', ogTitle or title, is_property=True)
-    update_or_create_meta('og:description', ogDescription or description, is_property=True)
-    update_or_create_meta('og:url', ogUrl, is_property=True)
-    update_or_create_meta('og:image', ogImage, is_property=True)
-    update_or_create_meta('twitter:title', ogTitle or title)
-    update_or_create_meta('twitter:description', ogDescription or description)
-    update_or_create_meta('twitter:image', ogImage)
+    update_or_create_meta('og:title', title, is_property=True)
+    update_or_create_meta('og:description', description, is_property=True)
+    update_or_create_meta('og:url', og_url, is_property=True)
+    update_or_create_meta('og:image',og_image, is_property=True)
+    update_or_create_meta('twitter:title', title)
+    update_or_create_meta('twitter:description', description)
+    update_or_create_meta('twitter:image',og_image)
     
     # Add canonical link if not present or update it
     canonical_link = soup.find('link', {'rel': 'canonical'})
