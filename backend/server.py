@@ -710,14 +710,14 @@ async def auth_session_exchange(payload: SessionExchangeRequest, response: Respo
                 f"https://accounts.google.com/o/oauth2/token",
                 headers={"Accept": "application/json", "User-Agent": "SmartGiaoAn-Backend/1.0"}
             )
-            if r.status_code == 404:
-                raise HTTPException(status_code=401, detail="Google Session ID already consumed. Try clicking Google Login again.")
+            # Removed fallback to auth.emergentagent.com
             r.raise_for_status()
             eu = r.json()
     except HTTPException:
         raise
     except httpx.HTTPStatusError as e:
-        raise HTTPException(status_code=401, detail=f"Auth Broker Error {e.response.status_code}: {e.response.text}")
+        # This error should ideally not happen if Google's token endpoint is used directly
+        raise HTTPException(status_code=401, detail=f"Google Token Error {e.response.status_code}: {e.response.text}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Auth server connection failed: {e}")
 

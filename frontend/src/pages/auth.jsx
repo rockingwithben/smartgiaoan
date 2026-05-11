@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { getMe, startEmergentLogin, logoutUser } from './api';
+import { getMe, logoutUser } from './api'; // Removed startEmergentLogin
 
 const AuthContext = createContext(null);
 
@@ -35,9 +35,10 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  const startLogin = () => {
-    startEmergentLogin();
-  };
+  const startLogin = useCallback(() => { // Replaced with direct Google OAuth flow
+    const redirectUrl = window.location.origin + '/auth/callback';
+    window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${process.env.REACT_APP_GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUrl)}&response_type=code&scope=openid%20email%20profile`;
+  }, []);
 
   const logout = async () => {
     await logoutUser();

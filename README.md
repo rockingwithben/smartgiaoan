@@ -40,7 +40,7 @@ Watch a quick walkthrough of the platform in action:
 - **Vietnam‑localised content** – Vietnamese names, places, cultural references, and bilingual UI (English primary / Vietnamese secondary).  
 - **Print‑ready PDF export** – A4 layout with Cormorant Garamond serif body for a professional exam‑paper feel.  
 - **Free tier + premium tier** – 3 free worksheets per browser (anonymous) or per Google account, then £5 /month via PayPal or rewarded ads (15 s/30 s/45 s = 1/2/3 credits).  
-- **Google Auth** via Emergent‑managed OAuth for seamless sign‑in.  
+- **Google Auth** via standalone Google OAuth for seamless sign‑in.
 
 ---
 
@@ -63,7 +63,7 @@ Watch a quick walkthrough of the platform in action:
 | **Frontend** | React 19 • Tailwind CSS • Shadcn UI • react‑router v7 • jsPDF + html2canvas |
 | **Backend** | FastAPI • Motor (async MongoDB) • google‑generativeai (Gemini 2.5 Flash) |
 | **Database** | MongoDB |
-| **Auth** | Emergent‑managed Google OAuth (httpOnly cookie, 7‑day session) |
+| **Auth** | Standalone Google OAuth (httpOnly cookie, 7‑day session) |
 | **Payments** | PayPal Hosted Buttons (£5 GBP/mo) |
 | **Ads** | Google AdSense placeholders (sidebar, leaderboard, inline) |
 

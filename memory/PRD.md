@@ -6,7 +6,7 @@ SmartGiaoAn is a specialized SaaS for ESL teachers in Vietnam. It uses the Gemin
 ## Architecture
 - **Frontend**: React 19 + Tailwind + Shadcn UI, react-router-dom v7, jspdf + html2canvas for PDF, @phosphor-icons/react
 - **Backend**: FastAPI + Motor (async MongoDB) + google-generativeai (Gemini 2.5 Flash, BYOK)
-- **Auth**: Emergent-managed Google OAuth with httpOnly session_token cookies (7-day expiry) + Bearer fallback
+- **Auth**: Standalone Google OAuth with httpOnly session_token cookies (7-day expiry) + Bearer fallback
 - **Payments**: PayPal Hosted Buttons (£5/mo, ID `KRKWACD47HF7G`) — manual `mark-premium` activation
 - **Database collections**: `users`, `user_sessions`, `worksheets`
 
@@ -37,7 +37,7 @@ SmartGiaoAn is a specialized SaaS for ESL teachers in Vietnam. It uses the Gemin
 ### Frontend (`/app/frontend/src/`)
 - `pages/Landing.jsx` — Tetris-grid hero, Cormorant Garamond + terracotta, pricing, features
 - `pages/Dashboard.jsx` — generator form sidebar, worksheet preview, history, PDF download, print
-- `pages/AuthCallback.jsx` — Emergent OAuth session_id exchange
+- `pages/AuthCallback.jsx` — Google OAuth session_id exchange
 - `components/WorksheetView.jsx` — Cambridge-style printable worksheet (sections, MC, fill-blank, T/F, matching, answer key, teacher notes)
 - `components/PaywallModal.jsx` + `UpgradeModal` (PayPal hosted button embed)
 - `components/RewardedAdModal.jsx` — countdown timer + AdSense placeholder
