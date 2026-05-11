@@ -37,3 +37,7 @@ services:
         sync: false
       - key: CORS_ORIGINS
         value: https://smartgiaoan.site,https://www.smartgiaoan.site
+      - key: FRONTEND_URL
+        value: https://smartgiaoan.site
+      - key: BACKEND_PUBLIC_URL
+        value: https://smartgiaoan.onrender.com

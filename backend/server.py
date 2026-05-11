@@ -70,6 +70,8 @@ CORS_ORIGINS = [o.strip() for o in _cors_env.split(',') if o.strip()] or [
     "https://www.smartgiaoan.site",
     "http://localhost:3000",
 ]
+FRONTEND_URL = os.environ.get('FRONTEND_URL', CORS_ORIGINS[0]).rstrip("/")
+BACKEND_PUBLIC_URL = os.environ.get('BACKEND_PUBLIC_URL', '').rstrip("/")
 
 # ============================================================
 # FIX 2: Correct model names ("gemini-3.1-pro-001" does not exist).
@@ -801,6 +803,18 @@ async def auth_login(payload: EmailAuthRequest, response: Response):
     token = await _create_session(doc["user_id"], response)
     return {"user": {k: v for k, v in doc.items() if k not in ["_id", "password_hash"]}, "session_token": token}
 
+@api_router.post("/auth/session")
+async def auth_session(payload: SessionExchangeRequest):
+    session = await db.user_sessions.find_one({"session_token": payload.session_id}, {"_id": 0})
+    if not session or _parse_dt(session["expires_at"]) < _now():
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+    doc = await db.users.find_one({"user_id": session["user_id"]}, {"_id": 0})
+    user = await _load_user(doc)
+    if not user:
+        raise HTTPException(status_code=401, detail="Session user not found")
+    user = await refresh_user_credits(user)
+    return {"user": user.model_dump(), "session_token": payload.session_id}
+
 # New endpoint for Google OAuth callback
 @api_router.get("/auth/google-callback")
 async def google_oauth_callback(
@@ -819,9 +833,11 @@ async def google_oauth_callback(
         logger.error("Google OAuth credentials not configured. Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET.")
         raise HTTPException(status_code=500, detail="Server configuration error: Google OAuth credentials missing.")
 
-    # Construct the redirect URI dynamically to match the frontend
-    frontend_origin = request.url.origin
-    dynamic_redirect_uri = f"{frontend_origin}/auth/callback"
+    dynamic_redirect_uri = (
+        f"{BACKEND_PUBLIC_URL}/api/auth/google-callback"
+        if BACKEND_PUBLIC_URL
+        else str(request.url_for("google_oauth_callback"))
+    )
 
     token_url = "https://oauth2.googleapis.com/token"
     userinfo_url = "https://www.googleapis.com/oauth2/v3/userinfo"
@@ -897,8 +913,10 @@ async def google_oauth_callback(
         # 4. Create session and set cookie
         token = await _create_session(user_doc["user_id"], response)
 
-        # 5. Redirect to frontend's home page
-        frontend_redirect_url = frontend_origin + "/"
+        frontend_origin = state.rstrip("/") if state else FRONTEND_URL
+        if frontend_origin not in CORS_ORIGINS:
+            frontend_origin = FRONTEND_URL
+        frontend_redirect_url = f"{frontend_origin}/auth/callback?session_id={token}"
         return RedirectResponse(url=frontend_redirect_url, status_code=303)
 
     except HTTPException:

@@ -34,9 +34,10 @@ export function AuthProvider({ children }) {
   }, [checkAuth]);
 
   const startLogin = useCallback(() => {
-    // Update redirect_uri to point to the backend's Google OAuth callback endpoint
-    const backendCallbackUrl = window.location.origin + '/api/auth/google-callback';
-    window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${process.env.REACT_APP_GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(backendCallbackUrl)}&response_type=code&scope=openid%20email%20profile`;
+    const backendBase = (process.env.REACT_APP_BACKEND_URL || 'https://smartgiaoan.onrender.com').replace(/\/$/, '');
+    const backendCallbackUrl = `${backendBase}/api/auth/google-callback`;
+    const state = window.location.origin;
+    window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${process.env.REACT_APP_GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(backendCallbackUrl)}&response_type=code&scope=openid%20email%20profile&state=${encodeURIComponent(state)}`;
   }, []);
 
   const logout = useCallback(async () => {

@@ -36,6 +36,11 @@ export async function registerWithEmail(email, password, name, role) {
   const r = await http.post('/auth/register', { email, password, name, role });
   return r.data;
 }
+
+export async function exchangeSession(session_id) {
+  const r = await http.post('/auth/session', { session_id });
+  return r.data;
+}
 // -------------------------------------------------------------
 
 export async function getMe() {
