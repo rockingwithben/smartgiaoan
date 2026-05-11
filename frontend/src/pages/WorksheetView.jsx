@@ -100,6 +100,16 @@ export default function WorksheetView() {
     }
   };
 
+  const handleWatchAdForEdit = async () => {
+    try {
+      await http.post('/usage/grant-rewarded', { tier: 30, reward_type: 'ai_edit' });
+      toast.success('AI edit credit added.');
+      setShowPaywall(false);
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'Could not add an edit credit.');
+    }
+  };
+
   if (loading) return (
     <div className="flex justify-center items-center min-h-screen bg-gray-50">
       <div className="text-center">
@@ -521,7 +531,7 @@ export default function WorksheetView() {
           <p className="mt-1">© {new Date().getFullYear()} SmartGiaoAn. For educational use only.</p>
         </footer>
       </div>
-      <PaywallModal open={showPaywall} onClose={() => setShowPaywall(false)} onWatchAd={() => {}} />
+      <PaywallModal open={showPaywall} onClose={() => setShowPaywall(false)} onWatchAd={handleWatchAdForEdit} />
     </div>
   );
 }

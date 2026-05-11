@@ -59,7 +59,7 @@ export default function WorksheetEditorPanels({ worksheet, tier, onUpdate }) {
     }
   };
 
-  const isPremium = tier?.tier === 'premium';
+  const canUseAiEditor = Boolean(tier?.has_ai_editor) || tier?.tier === 'premium' || tier?.tier === 'pro';
   const aiCredits = tier?.ai_edit_credits || 0;
 
   return (
@@ -67,12 +67,12 @@ export default function WorksheetEditorPanels({ worksheet, tier, onUpdate }) {
       {/* TIER BADGE */}
       <div className="flex justify-end">
         <span className={`text-xs font-black px-3 py-1 rounded-full uppercase tracking-wide ${
-          isPremium ? 'bg-purple-100 text-purple-700' :
+          canUseAiEditor ? 'bg-purple-100 text-purple-700' :
           tier?.tier === 'basic' ? 'bg-blue-100 text-blue-700' :
           'bg-gray-100 text-gray-600'
         }`}>
           {tier?.tier || 'free'} Plan
-          {isPremium && <span className="ml-1">• {aiCredits} AI edits left</span>}
+          {canUseAiEditor && <span className="ml-1">• {aiCredits} AI edits left</span>}
         </span>
       </div>
 
@@ -113,17 +113,17 @@ export default function WorksheetEditorPanels({ worksheet, tier, onUpdate }) {
       </div>
 
       {/* AI EDITOR — PREMIUM ONLY */}
-      <div className={`bg-gradient-to-r from-purple-50 to-indigo-50 border ${isPremium ? 'border-purple-200' : 'border-gray-200 opacity-60'} rounded-2xl p-6`}>
+      <div className={`bg-gradient-to-r from-purple-50 to-indigo-50 border ${canUseAiEditor ? 'border-purple-200' : 'border-gray-200 opacity-60'} rounded-2xl p-6`}>
         <div className="flex justify-between items-center mb-4">
           <h3 className="font-bold flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-purple-600" />
             AI Editor
-            {!isPremium && <Lock className="w-4 h-4 text-gray-400" />}
-            {isPremium && <span className="text-xs bg-purple-600 text-white px-2 py-0.5 rounded-full font-bold">{aiCredits} left</span>}
+            {!canUseAiEditor && <Lock className="w-4 h-4 text-gray-400" />}
+            {canUseAiEditor && <span className="text-xs bg-purple-600 text-white px-2 py-0.5 rounded-full font-bold">{aiCredits} left</span>}
           </h3>
         </div>
 
-        {isPremium ? (
+        {canUseAiEditor ? (
           <div className="space-y-3">
             <div className="flex flex-wrap gap-2">
               {["Make it harder", "Add 5 questions", "Translate to Vietnamese", "Simplify for weak students", "Convert to exam format"].map(cmd => (

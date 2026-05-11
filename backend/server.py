@@ -78,15 +78,20 @@ BACKEND_PUBLIC_URL = os.environ.get('BACKEND_PUBLIC_URL', '').rstrip("/")
 #         Using gemini-2.0-flash as a stable, capable default.
 #         Only defined ONCE (previously defined 3 times — removed duplicates).
 # ============================================================
-GEMINI_MODEL_FREE    = "google/gemma-3-27b:free"
+GEMINI_MODEL_FREE    = "gemini-2.0-flash"
 GEMINI_MODEL_BASIC   = "gemini-2.0-flash"
 GEMINI_MODEL_PREMIUM = "gemini-2.0-flash"
 
 _GEMINI_FALLBACKS = {
-    GEMINI_MODEL_FREE: ["google/gemma-3-27b:free", "meta-llama/llama-3.3-70b-instruct:free"],
-    GEMINI_MODEL_BASIC: ["google/gemma-3-27b:free", "meta-llama/llama-3.3-70b-instruct:free"],
-    GEMINI_MODEL_PREMIUM: ["google/gemma-3-27b:free", "meta-llama/llama-3.3-70b-instruct:free"],
+    GEMINI_MODEL_FREE: ["gemini-1.5-flash"],
+    GEMINI_MODEL_BASIC: ["gemini-1.5-flash"],
+    GEMINI_MODEL_PREMIUM: ["gemini-1.5-flash"],
 }
+
+if os.environ.get('OPENROUTER_API_KEY', '').strip():
+    for _fallback_models in _GEMINI_FALLBACKS.values():
+        if "google/gemma-3-27b:free" not in _fallback_models:
+            _fallback_models.append("google/gemma-3-27b:free")
 
 TIER_CONFIG = {
     "free": {
@@ -100,15 +105,15 @@ TIER_CONFIG = {
         "ad_frequency_base": 0.3,
     },
     "premium": {
-        "model": GEMINI_MODEL_FREE,
+        "model": GEMINI_MODEL_PREMIUM,
         "monthly_quota": 999999,
         "ai_edits_per_month": 999999,
         "has_word_editor": True,
-        "has_ai_editor": False,
+        "has_ai_editor": True,
         "has_ads": False,
     },
     "pro": {
-        "model": GEMINI_MODEL_FREE,
+        "model": GEMINI_MODEL_PREMIUM,
         "monthly_quota": 999999,
         "ai_edits_per_month": 999999,
         "has_word_editor": True,
@@ -722,6 +727,9 @@ async def _run_gemini(prompt: str, level: str, model_name: str, skill: str = "",
             except httpx.HTTPStatusError as e:
                 last_error = f"OpenRouter HTTP error: {e}"
                 logger.error(f"[OpenRouter] {last_error} (attempt {attempt+1})")
+                if e.response.status_code == 429:
+                    logger.warning("[OpenRouter] Rate limited; trying next model/provider.")
+                    break
                 await asyncio.sleep(1)
 
             except httpx.RequestError as e:

@@ -1,10 +1,12 @@
 import axios from 'axios';
 
-const BASE = process.env.REACT_APP_BACKEND_URL
+const rawBase = process.env.REACT_APP_BACKEND_URL
   ? process.env.REACT_APP_BACKEND_URL.replace(/\/$/, '')
   : 'https://smartgiaoan.onrender.com';
+const BASE = rawBase.replace(/\/api$/, '');
 
 export const API = `${BASE}/api`;
+export const BACKEND_BASE = BASE;
 
 export const http = axios.create({
   baseURL: API,

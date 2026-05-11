@@ -98,6 +98,51 @@ export default function Landing() {
           </div>
         </section>
 
+        {/* ============ OVERLAPPING SCROLL PREVIEW ============ */}
+        <section className="relative border-y border-border bg-[#f6f1e8] overflow-hidden">
+          <div className="absolute inset-x-0 top-0 h-28 bg-white" />
+          <div className="relative max-w-7xl mx-auto px-6 lg:px-10 py-16 lg:py-24 grid grid-cols-1 lg:grid-cols-12 gap-10">
+            <div className="lg:col-span-4 lg:sticky lg:top-24 self-start">
+              <p className="overline text-terracotta">Scrolling workspace</p>
+              <h2 className="font-display text-4xl lg:text-5xl mt-2 leading-tight">
+                Worksheets that feel assembled, not templated.
+              </h2>
+              <p className="mt-5 text-muted-foreground leading-relaxed">
+                Prompt, worksheet, answer key, and teacher notes stack into one printable flow for real classroom use.
+              </p>
+            </div>
+            <div className="lg:col-span-8 min-h-[760px] relative">
+              <div className="sticky top-24 h-[620px]">
+                <div className="absolute left-0 top-6 w-[78%] max-w-xl bg-white border border-border shadow-xl p-7 rotate-[-2deg]">
+                  <p className="overline text-terracotta">Primary · A2</p>
+                  <h3 className="font-display text-3xl mt-2">Tet Market Mystery</h3>
+                  <div className="mt-6 space-y-3 text-sm text-gray-600">
+                    <p className="font-bold text-gray-900">Part 1: Read and circle true or false.</p>
+                    <p>Lan and Minh visit Ben Thanh Market before Tet. They need five fruits, red envelopes, and one surprise gift.</p>
+                    <div className="grid grid-cols-2 gap-3 pt-2">
+                      <div className="border border-gray-200 p-3">1. Lan buys mangoes.</div>
+                      <div className="border border-gray-200 p-3">2. Minh sees lanterns.</div>
+                    </div>
+                  </div>
+                </div>
+                <div className="absolute right-0 top-44 w-[70%] max-w-lg bg-[#101828] text-white shadow-2xl p-7 rotate-[2deg]">
+                  <p className="overline text-amber-300">Answer key</p>
+                  <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
+                    <div className="bg-white/10 p-3">1. True</div>
+                    <div className="bg-white/10 p-3">2. False</div>
+                    <div className="bg-white/10 p-3">3. B</div>
+                    <div className="bg-white/10 p-3">4. lanterns</div>
+                  </div>
+                </div>
+                <div className="absolute left-12 bottom-4 w-[72%] max-w-lg bg-terracotta text-white shadow-xl p-6 rotate-[-1deg]">
+                  <p className="overline text-white/70">Teacher notes</p>
+                  <p className="mt-3 text-lg font-display">Vietnamese learners may omit final /s/ in plurals. Drill “fruits”, “gifts”, and “streets” before the speaking task.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* ============ SPECIFIC, NOT GENERIC stats ============ */}
         <section className="border-y border-border bg-white">
           <div className="max-w-7xl mx-auto px-6 lg:px-10 py-10 grid grid-cols-2 md:grid-cols-4 gap-6 text-left">
