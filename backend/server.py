@@ -16,6 +16,7 @@ import base64
 import random
 import io
 import sys
+import warnings
 from docx import Document
 from docx.shared import Pt
 from pathlib import Path
@@ -38,7 +39,9 @@ GenerationConfig = None
 
 if sys.version_info < (3, 14):
     try:
-        import google.generativeai as genai
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", FutureWarning)
+            import google.generativeai as genai
         from google.api_core.exceptions import BadRequest as GoogleBadRequest
         from google.api_core.exceptions import InvalidArgument, NotFound
         from vertexai.generative_models import GenerationConfig
@@ -332,9 +335,56 @@ adc_json_raw = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS_JSON', '').strip()
 api_key      = os.environ.get('GEMINI_API_KEY', '').strip()
 OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY', '').strip()
 
+
+def _parse_google_credentials_json(raw: str) -> dict:
+    """Parse service-account JSON from Render env vars without logging secrets."""
+    value = raw.strip()
+    if not value:
+        raise ValueError("GOOGLE_APPLICATION_CREDENTIALS_JSON is empty")
+
+    if (value.startswith("'") and value.endswith("'")) or (value.startswith('"') and value.endswith('"')):
+        value = value[1:-1].strip()
+
+    candidates = [value]
+
+    try:
+        decoded = base64.b64decode(value, validate=True).decode("utf-8").strip()
+        if decoded:
+            candidates.append(decoded)
+    except Exception:
+        pass
+
+    for candidate in candidates:
+        try:
+            parsed = json.loads(candidate)
+            if isinstance(parsed, str):
+                parsed = json.loads(parsed)
+            if not isinstance(parsed, dict):
+                raise ValueError("credential JSON did not decode to an object")
+            return parsed
+        except json.JSONDecodeError:
+            fixed = re.sub(
+                r'("private_key"\s*:\s*")(.*?)("\s*,\s*"client_email")',
+                lambda m: m.group(1) + m.group(2).replace("\n", "\\n") + m.group(3),
+                candidate,
+                flags=re.DOTALL,
+            )
+            if fixed != candidate:
+                try:
+                    parsed = json.loads(fixed)
+                    if isinstance(parsed, dict):
+                        return parsed
+                except json.JSONDecodeError:
+                    pass
+
+    raise ValueError(
+        "GOOGLE_APPLICATION_CREDENTIALS_JSON is not valid service-account JSON. "
+        "Paste the raw JSON object exactly, or set it to base64-encoded JSON."
+    )
+
 if adc_json_raw:
     try:
-        creds_dict = json.loads(adc_json_raw)
+        creds_dict = _parse_google_credentials_json(adc_json_raw)
         adc_path = '/tmp/gcp_adc.json'
         with open(adc_path, 'w') as f:
             json.dump(creds_dict, f)
@@ -1520,6 +1570,10 @@ async def root():
         "ai_engine": "vertex_ai" if USE_VERTEX_AI else "generative_ai",
         "ai_region": GEMINI_REGION,
     }
+
+@app.head("/")
+async def root_head():
+    return Response(status_code=200)
 
 @app.get("/worksheet_seo/{worksheet_id}")
 async def worksheet_seo_data(worksheet_id: str):
