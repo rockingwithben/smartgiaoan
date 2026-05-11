@@ -15,6 +15,7 @@ import re
 import base64
 import random
 import io
+import sys
 from docx import Document
 from docx.shared import Pt
 from pathlib import Path
@@ -24,13 +25,26 @@ from datetime import datetime, timezone, timedelta
 from xml.sax.saxutils import escape as xml_escape
 from starlette.responses import RedirectResponse
 
-# Disabling all Google GenAI/Vertex AI imports as they crash on Python 3.14 (protobuf metaclass issue)
+class _GoogleSDKUnavailable(Exception):
+    pass
+
+
 genai = None
-NotFound = Exception
-InvalidArgument = Exception
-GoogleBadRequest = Exception
+NotFound = _GoogleSDKUnavailable
+InvalidArgument = _GoogleSDKUnavailable
+GoogleBadRequest = _GoogleSDKUnavailable
 VertexModel = None
 GenerationConfig = None
+
+if sys.version_info < (3, 14):
+    try:
+        import google.generativeai as genai
+        from google.api_core.exceptions import BadRequest as GoogleBadRequest
+        from google.api_core.exceptions import InvalidArgument, NotFound
+        from vertexai.generative_models import GenerationConfig
+        from vertexai.generative_models import GenerativeModel as VertexModel
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"Google AI SDK imports unavailable: {e}")
 
 # ============================================================
 # INITIALIZATION & CONFIG
@@ -174,7 +188,6 @@ async def lifespan(app: FastAPI):
 # ============================================================
 app = FastAPI(title="SmartGiaoAn API", version="3.3.0", lifespan=lifespan)
 api_router = APIRouter(prefix="/api")
-app.include_router(api_router)
 
 def hash_password(password: str) -> str:
     salt = secrets.token_hex(16)
@@ -331,20 +344,26 @@ if adc_json_raw:
         import google.auth
         _gcp_creds, _vertex_project = google.auth.default()
 
-        import vertexai
-        vertexai.init(project=_vertex_project, location=GEMINI_REGION)
-        USE_VERTEX_AI = True
-        logger.info(f"AI Engine: Vertex AI | project={_vertex_project} | region={GEMINI_REGION} | geo-block bypassed ✓")
+        if VertexModel and GenerationConfig:
+            import vertexai
+            vertexai.init(project=_vertex_project, location=GEMINI_REGION)
+            USE_VERTEX_AI = True
+            logger.info(f"AI Engine: Vertex AI | project={_vertex_project} | region={GEMINI_REGION} | geo-block bypassed ✓")
+        else:
+            logger.warning("Vertex AI credentials were provided, but Vertex AI SDK imports are unavailable.")
+            if api_key and genai:
+                genai.configure(api_key=api_key)
+                logger.warning("AI Engine: API key fallback enabled.")
 
     except Exception as e:
         logger.error(f"Vertex AI init failed: {e}")
-        if api_key:
+        if api_key and genai:
             genai.configure(api_key=api_key)
             logger.warning("AI Engine: API key fallback — change Render region to Oregon to avoid 400 location errors.")
         else:
             logger.error("CRITICAL: No usable Google credentials.")
 
-elif api_key:
+elif api_key and genai:
     genai.configure(api_key=api_key)
     logger.warning(
         "AI Engine: API key mode. "
@@ -352,7 +371,7 @@ elif api_key:
         "Render Dashboard → Settings → Region → Oregon (US West)."
     )
 else:
-    logger.error("CRITICAL: NO GOOGLE CREDENTIALS — all AI calls will fail.")
+    logger.error("CRITICAL: NO USABLE GOOGLE CREDENTIALS — all AI calls will use the disabled mock.")
 
 
 def _is_location_error(exc: Exception) -> bool:
