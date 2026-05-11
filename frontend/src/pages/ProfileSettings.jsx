@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useAuth } from '../lib/auth';
@@ -8,7 +8,7 @@ import { Footer } from '../components/Footer';
 
 // Shown after first Google login when teaching_level is not set
 export default function ProfileSettings() {
-  const { user, refreshUser } = useAuth();
+  const { user, loading, refreshUser } = useAuth();
   const navigate = useNavigate();
 
   const [form, setForm] = useState({
@@ -18,10 +18,21 @@ export default function ProfileSettings() {
   });
   const [saving, setSaving] = useState(false);
 
-  if (!user) {
-    navigate('/login', { replace: true });
-    return null;
-  }
+  useEffect(() => {
+    if (!loading && !user) {
+      navigate('/login', { replace: true });
+    }
+  }, [loading, navigate, user]);
+
+  useEffect(() => {
+    if (user) {
+      setForm({
+        teaching_level: user.teaching_level || '',
+        class_size: user.class_size || '',
+        focus_area: user.focus_area || '',
+      });
+    }
+  }, [user]);
 
   const onChange = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
@@ -41,6 +52,14 @@ export default function ProfileSettings() {
   };
 
   const handleSkip = () => navigate('/dashboard', { replace: true });
+
+  if (loading || !user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-red-600" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col">

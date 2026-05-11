@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { http } from '../lib/api';
 import { Navbar } from '../components/Navbar';
@@ -20,21 +20,7 @@ export default function PublicLibrary() {
   const [searchQuery, setSearchQuery] = useState('');
   const [cloningId, setCloningId] = useState(null);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    fetchLibrary();
-  }, [activeLevel, activeSkill]);
-
-  // Debounce search
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchLibrary();
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
-
-  const fetchLibrary = async () => {
+  const fetchLibrary = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
@@ -51,7 +37,15 @@ export default function PublicLibrary() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeLevel, activeSkill, searchQuery]);
+
+  // Debounce filtering and search so rapid typing does not flood the API.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchLibrary();
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [fetchLibrary, searchQuery]);
 
   const handleClone = async (worksheetId) => {
     setCloningId(worksheetId);

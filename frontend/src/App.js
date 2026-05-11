@@ -18,7 +18,7 @@ import Account from './pages/Account';
 import Levels from './pages/Levels';
 import NotFound from './pages/NotFound';
 import PublicLibrary from './pages/PublicLibrary';
-import ProfileSettings from './pages/ProfileSettings';
+import ProfileSettings from './pages/ProfileSettings.jsx';
 import AuthModal from './pages/AuthModal';
 import WorksheetView from './pages/WorksheetView';
 import WorksheetUpload from './pages/WorksheetUpload';
