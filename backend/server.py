@@ -707,7 +707,7 @@ async def auth_session_exchange(payload: SessionExchangeRequest, response: Respo
     try:
         async with httpx.AsyncClient(timeout=30.0, follow_redirects=True, trust_env=False) as hx:
             r = await hx.get(
-                f"https://auth.emergentagent.com/api/session/{sid}",
+                f"https://accounts.google.com/o/oauth2/token",
                 headers={"Accept": "application/json", "User-Agent": "SmartGiaoAn-Backend/1.0"}
             )
             if r.status_code == 404:
