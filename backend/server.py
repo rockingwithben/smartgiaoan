@@ -217,6 +217,9 @@ class User(BaseModel):
     name: str
     role: str = "Teacher"
     picture: Optional[str] = ""
+    teaching_level: Optional[str] = ""
+    class_size: Optional[str] = ""
+    focus_area: Optional[str] = ""
     subscription_tier: str = "free"
     is_premium: bool = False
     free_used: int = 0
@@ -257,6 +260,26 @@ class UpdateWorksheetRequest(BaseModel):
     title: Optional[str] = None
     content: Optional[dict] = None
     is_public: Optional[bool] = None
+
+class ProfileUpdateRequest(BaseModel):
+    teaching_level: Optional[str] = None
+    class_size: Optional[str] = None
+    focus_area: Optional[str] = None
+    name: Optional[str] = None
+    role: Optional[str] = None
+
+class LibraryUploadRequest(BaseModel):
+    title: str
+    description: str
+    level: str
+    skills: list[str] = Field(default_factory=list)
+    topic: Optional[str] = ""
+    is_public: bool = True
+
+class WorksheetFixRequest(BaseModel):
+    worksheetId: str
+    originalPrompt: Optional[str] = ""
+    feedback: str
 
 class PayPalCaptureRequest(BaseModel):
     order_id: str
@@ -955,6 +978,23 @@ async def delete_account(user: User = Depends(require_user)):
     await db.user_sessions.delete_many({"user_id": user.user_id})
     return {"status": "deleted"}
 
+@api_router.put("/auth/profile")
+async def update_profile(payload: ProfileUpdateRequest, user: User = Depends(require_user)):
+    allowed = {
+        "teaching_level": payload.teaching_level,
+        "class_size": payload.class_size,
+        "focus_area": payload.focus_area,
+        "name": payload.name,
+        "role": payload.role,
+    }
+    updates = {k: v.strip() if isinstance(v, str) else v for k, v in allowed.items() if v is not None}
+    if updates:
+        updates["updated_at"] = _now().isoformat()
+        await db.users.update_one({"user_id": user.user_id}, {"$set": updates})
+    doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    refreshed = await _load_user(doc)
+    return refreshed.model_dump()
+
 # ============================================================
 # API ROUTES — WORKSHEETS
 # ============================================================
@@ -1189,6 +1229,26 @@ async def ai_edit_worksheet(payload: AIEditRequest, user: User = Depends(require
     await db.worksheets.insert_one(new_doc)
     return {k: v for k, v in new_doc.items() if k != "_id"}
 
+@api_router.post("/worksheets/fix")
+async def fix_worksheet(payload: WorksheetFixRequest, user: User = Depends(require_user)):
+    ws = await db.worksheets.find_one({"worksheet_id": payload.worksheetId, "user_id": user.user_id})
+    if not ws:
+        raise HTTPException(status_code=404, detail="Worksheet not found")
+
+    fix_prompt = (
+        f"You are fixing an ESL worksheet.\nCurrent content:\n{json.dumps(ws.get('content', {}), indent=2)}\n\n"
+        f"Original prompt/context:\n{payload.originalPrompt or 'Not provided'}\n\n"
+        f"Teacher feedback:\n{payload.feedback}\n\n"
+        "Return the FULL corrected worksheet content as raw valid JSON only. Preserve the existing schema where possible."
+    )
+    config = TIER_CONFIG.get(user.subscription_tier, TIER_CONFIG["free"])
+    fixed = await _run_gemini(fix_prompt, ws.get("level", "Primary"), model_name=config["model"])
+    await db.worksheets.update_one(
+        {"worksheet_id": payload.worksheetId, "user_id": user.user_id},
+        {"$set": {"content": fixed, "updated_at": _now().isoformat(), "fix_feedback": payload.feedback}}
+    )
+    return {"status": "fixed", "content": fixed}
+
 # ============================================================
 # API ROUTES — REWARDED ADS
 # ============================================================
@@ -1305,6 +1365,34 @@ async def public_library_feed_xml(
     ])
 
     return Response(content=feed, media_type="application/atom+xml")
+
+@api_router.post("/library/upload")
+async def upload_library_worksheet(payload: LibraryUploadRequest, user: User = Depends(require_user)):
+    primary_skill = payload.skills[0] if payload.skills else "reading"
+    ws_id = f"ws_{uuid.uuid4().hex[:12]}"
+    ws_doc = {
+        "worksheet_id": ws_id,
+        "user_id": user.user_id,
+        "title": payload.title.strip(),
+        "level": payload.level,
+        "cefr": "",
+        "skill": primary_skill,
+        "skills": payload.skills,
+        "topic": payload.topic or "",
+        "description": payload.description.strip(),
+        "content": {
+            "title": payload.title.strip(),
+            "description": payload.description.strip(),
+            "sections": [],
+            "answer_key": [],
+            "teacher_notes": "Community upload awaiting review.",
+        },
+        "is_public": bool(payload.is_public),
+        "review_status": "pending",
+        "created_at": _now().isoformat(),
+    }
+    await db.worksheets.insert_one(ws_doc)
+    return {k: v for k, v in ws_doc.items() if k != "_id"}
 
 @api_router.post("/library/{worksheet_id}/clone")
 async def clone_worksheet(worksheet_id: str, user: User = Depends(require_user)):

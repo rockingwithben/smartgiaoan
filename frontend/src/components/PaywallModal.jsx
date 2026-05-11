@@ -7,7 +7,7 @@ import { PayPalButton } from './PayPalButton';
 
 export function PaywallModal({ open, onClose, onWatchAd }) {
   const { t } = useI18n();
-  const { refresh } = useAuth();
+  const { refreshUser } = useAuth();
   
   const [view, setView] = useState('paywall'); // 'paywall' | 'checkout'
   const [activating, setActivating] = useState(false);
@@ -22,7 +22,7 @@ export function PaywallModal({ open, onClose, onWatchAd }) {
     setActivating(true);
     try {
       await capturePayPal(subscriptionID, product_type);
-      await refresh();
+      await refreshUser();
       toast.success('Subscription activated! Welcome to the new tier.');
       
       setView('paywall');

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 
 // AdSense Client ID - should be set in environment variables
-const ADSENSE_CLIENT_ID = import.meta.env.VITE_ADSENSE_CLIENT_ID || 'ca-pub-XXXXXXXXXXXXXXXX';
+const ADSENSE_CLIENT_ID = process.env.REACT_APP_ADSENSE_CLIENT_ID || 'ca-pub-XXXXXXXXXXXXXXXX';
 
 export function AdSenseScript() {
   const [loaded, setLoaded] = useState(false);
@@ -28,6 +28,8 @@ export function AdSenseScript() {
 
   return null;
 }
+
+export default AdSenseScript;
 
 // Responsive ad slot that adapts to container width
 export function AdUnit({ 
@@ -115,7 +117,7 @@ export function SponsoredContent({ children, className = '' }) {
 
 // Ad placeholder for development (when AdSense is not configured)
 export function AdPlaceholder({ height = '90px', className = '' }) {
-  const isDev = import.meta.env.DEV;
+  const isDev = process.env.NODE_ENV === 'development';
   
   if (!isDev) return null;
   
@@ -128,14 +130,3 @@ export function AdPlaceholder({ height = '90px', className = '' }) {
     </div>
   );
 }
-
-export default {
-  AdSenseScript,
-  AdUnit,
-  BannerAd,
-  InArticleAd,
-  MobileBannerAd,
-  LeaderboardAd,
-  SponsoredContent,
-  AdPlaceholder
-};
