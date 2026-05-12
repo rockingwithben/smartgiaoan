@@ -1,32 +1,41 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { I18nProvider } from './lib/i18n';
 import { AuthProvider } from './lib/auth';
 import { wakeUpServer } from './lib/api';
 
-import Landing from './pages/Landing';
-import Dashboard from './pages/Dashboard';
-import AuthCallback from './pages/AuthCallback';
-import About from './pages/About';
-import Pricing from './pages/Pricing';
-import FAQ from './pages/FAQ';
-import Contact from './pages/Contact';
-import Privacy from './pages/Privacy';
-import Terms from './pages/Terms';
-import Account from './pages/Account';
-import Levels from './pages/Levels';
-import NotFound from './pages/NotFound';
-import PublicLibrary from './pages/PublicLibrary';
-import ProfileSettings from './pages/ProfileSettings.jsx';
-import AuthModal from './pages/AuthModal';
-import WorksheetView from './pages/WorksheetView';
-import WorksheetUpload from './pages/WorksheetUpload';
+// Lazy load page components
+const Landing = lazy(() => import('./pages/Landing'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const AuthCallback = lazy(() => import('./pages/AuthCallback'));
+const About = lazy(() => import('./pages/About'));
+const Pricing = lazy(() => import('./pages/Pricing'));
+const FAQ = lazy(() => import('./pages/FAQ'));
+const Contact = lazy(() => import('./pages/Contact'));
+const Privacy = lazy(() => import('./pages/Privacy'));
+const Terms = lazy(() => import('./pages/Terms'));
+const Account = lazy(() => import('./pages/Account'));
+const Levels = lazy(() => import('./pages/Levels'));
+const NotFound = lazy(() => import('./pages/NotFound'));
+const PublicLibrary = lazy(() => import('./pages/PublicLibrary'));
+const ProfileSettings = lazy(() => import('./pages/ProfileSettings.jsx'));
+const AuthModal = lazy(() => import('./pages/AuthModal'));
+const WorksheetView = lazy(() => import('./pages/WorksheetView'));
+const WorksheetUpload = lazy(() => import('./pages/WorksheetUpload'));
+
 import { CookieConsent } from './components/CookieConsent';
 import { SponsorManager } from './components/SponsorManager';
 import { SEO } from './meta'; // Import SEO component
 import './App.css';
 import GoogleAdSenseScript from './components/GoogleAdSense';
+
+// Simple loading fallback component
+const PageLoading = () => (
+  <div className="min-h-screen flex items-center justify-center text-lg font-medium text-gray-500">
+    Loading page...
+  </div>
+);
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -66,25 +75,25 @@ function AppRouter() {
     <>
       <SponsorManager />
       <Routes>
-        <Route path="/" element={<Landing />} />
+        <Route path="/" element={<Suspense fallback={<PageLoading />}><Landing /></Suspense>} />
         {/* FIX: Restored the manual login route */}
-        <Route path="/login" element={<AuthModal />} />
+        <Route path="/login" element={<Suspense fallback={<PageLoading />}><AuthModal /></Suspense>} />
         
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/library" element={<PublicLibrary />} />
-        <Route path="/worksheet/:id" element={<WorksheetView />} />
-        <Route path="/upload" element={<WorksheetUpload />} />
-        <Route path="/auth/callback" element={<AuthCallback />} />
-        <Route path="/about" element={<About />} />
-        <Route path="/pricing" element={<Pricing />} />
-        <Route path="/faq" element={<FAQ />} />
-        <Route path="/contact" element={<Contact />} />
-        <Route path="/privacy" element={<Privacy />} />
-        <Route path="/terms" element={<Terms />} />
-        <Route path="/account" element={<Account />} />
-        <Route path="/profile" element={<ProfileSettings />} />
-        <Route path="/levels" element={<Levels />} />
-        <Route path="*" element={<NotFound />} />
+        <Route path="/dashboard" element={<Suspense fallback={<PageLoading />}><Dashboard /></Suspense>} />
+        <Route path="/library" element={<Suspense fallback={<PageLoading />}><PublicLibrary /></Suspense>} />
+        <Route path="/worksheet/:id" element={<Suspense fallback={<PageLoading />}><WorksheetView /></Suspense>} />
+        <Route path="/upload" element={<Suspense fallback={<PageLoading />}><WorksheetUpload /></Suspense>} />
+        <Route path="/auth/callback" element={<Suspense fallback={<PageLoading />}><AuthCallback /></Suspense>} />
+        <Route path="/about" element={<Suspense fallback={<PageLoading />}><About /></Suspense>} />
+        <Route path="/pricing" element={<Suspense fallback={<PageLoading />}><Pricing /></Suspense>} />
+        <Route path="/faq" element={<Suspense fallback={<PageLoading />}><FAQ /></Suspense>} />
+        <Route path="/contact" element={<Suspense fallback={<PageLoading />}><Contact /></Suspense>} />
+        <Route path="/privacy" element={<Suspense fallback={<PageLoading />}><Privacy /></Suspense>} />
+        <Route path="/terms" element={<Suspense fallback={<PageLoading />}><Terms /></Suspense>} />
+        <Route path="/account" element={<Suspense fallback={<PageLoading />}><Account /></Suspense>} />
+        <Route path="/profile" element={<Suspense fallback={<PageLoading />}><ProfileSettings /></Suspense>} />
+        <Route path="/levels" element={<Suspense fallback={<PageLoading />}><Levels /></Suspense>} />
+        <Route path="*" element={<Suspense fallback={<PageLoading />}><NotFound /></Suspense>} />
       </Routes>
       <CookieConsent />
       <Toaster position="top-center" richColors />

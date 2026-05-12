@@ -41,14 +41,13 @@ let webpackConfig = {
       // Add ignored patterns to reduce watched directories
         webpackConfig.watchOptions = {
           ...webpackConfig.watchOptions,
-          ignored: [
-            '**/node_modules/**',
-            '**/.git/**',
-            '**/build/**',
-            '**/dist/**',
-            '**/coverage/**',
-            '**/public/**',
-        ],
+            ignored: [
+              '**/node_modules/**',
+              '**/.git/**',
+              '**/build/**',
+              '**/dist/**',
+              '**/coverage/**',
+          ],
       };
 
       // Add health check plugin to webpack if enabled

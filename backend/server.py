@@ -26,9 +26,19 @@ from datetime import datetime, timezone, timedelta
 from xml.sax.saxutils import escape as xml_escape
 from starlette.responses import RedirectResponse
 
+# --- Cache for Gemini responses ---
+_gemini_cache = {}
+_MAX_CACHE_ENTRIES = 100 # Limit cache size
+
+def _generate_cache_key(model_name: str, system_instruction: str, prompt: str) -> str:
+    """Generates a unique cache key for Gemini responses."""
+    # Simple approach: combine model, system instruction, and prompt.
+    # For more complex scenarios, consider hashing or more robust key generation.
+    return f"{model_name}|{system_instruction}|{prompt}"
+
+# --- Google SDK Initialization ---
 class _GoogleSDKUnavailable(Exception):
     pass
-
 
 genai = None
 NotFound = _GoogleSDKUnavailable
@@ -158,9 +168,6 @@ ACTIVITY_VAULT = [
     "Crossword (simple grid with picture clues for younger kids)",
     "Missing Letter (fill in the blank: b_n_n_ for 'banana')",
     "Odd One Out (circle the word that doesn't belong)",
-    "Dialogue Completion (finish the speech bubbles)",
-    "Word Search (small 8x8 grid with 5-6 hidden words)",
-    "Picture Description (look at the image and write 2-3 sentences)"
 ]
 
 # ============================================================
@@ -604,7 +611,7 @@ The structure must be:
     {{
       "section_number": 1,
       "section_title": "Part 1: ...",
-      "section_type": "passage | vocabulary | grammar | comprehension | writing | listening | activity",
+      "section_type": "passage | vocabulary | grammar | comprehension | listening | activity",
       "instruction": "Clear student-facing instruction.",
       "content": "Passage text, word list, or other non-question content. Omit key if not applicable.",
       "items": [
@@ -653,6 +660,12 @@ CONTENT GUIDELINES:
 
 async def _run_gemini(prompt: str, level: str, model_name: str, skill: str = "", topic: str = "", num_questions: int = 24) -> dict:
     system_instruction = build_system_prompt(level, skill=skill, topic=topic, num_questions=num_questions)
+    cache_key = _generate_cache_key(model_name, system_instruction, prompt)
+
+    # --- Cache Lookup ---
+    if cache_key in _gemini_cache:
+        logger.info(f"Cache hit for prompt: {prompt[:50]}...")
+        return _gemini_cache[cache_key]
 
     seen: set = set()
     model_chain = [
@@ -719,6 +732,16 @@ async def _run_gemini(prompt: str, level: str, model_name: str, skill: str = "",
                 raw = re.sub(r'\s*$', '', raw).strip()
                 parsed = json.loads(raw)
 
+                # --- Cache Storage ---
+                if len(_gemini_cache) >= _MAX_CACHE_ENTRIES:
+                    # Simple eviction: remove the oldest entry (first one added)
+                    oldest_key = next(iter(_gemini_cache))
+                    del _gemini_cache[oldest_key]
+                    logger.debug(f"Cache full, evicted oldest entry: {oldest_key[:50]}...")
+                
+                _gemini_cache[cache_key] = parsed
+                logger.info(f"Cached response for prompt: {prompt[:50]}...")
+
                 if current_model != model_name:
                     logger.warning(f"[AI] Used fallback '{current_model}' (primary '{model_name}' was unavailable)")
 
@@ -756,7 +779,7 @@ async def _run_gemini(prompt: str, level: str, model_name: str, skill: str = "",
                     ))
                 if isinstance(e, (NotFound, InvalidArgument)):
                     last_error = f"Model not found: {e}"
-                    logger.warning(f"[Gemini] {last_error} — trying fallback")
+                    logger.info(f"[Gemini] {last_error} — trying fallback")
                     break
                 if isinstance(e, asyncio.TimeoutError):
                     last_error = "Timed out after 90s"

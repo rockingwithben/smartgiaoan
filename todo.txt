@@ -11,3 +11,6 @@
 - [x] Ensure dark mode compatibility
 - [x] Test animations and edge cases
 - [x] Verify all functionality works
+
+
+we still need to improve rendering performaces for large worksheets, reduce  bundle size throught code optimization, enhance accessinitty compliance, test performance improments with real datem verifty all existing functiontuly , run backend test, updates docmentuations and implemnt idempoteccy for critical writes
