@@ -1704,7 +1704,7 @@ async def paypal_webhook(request: Request):
         else:
             logger.info(f"Unhandled PayPal webhook event: {event_type}")
 
-        return {"status": "ok"}
+i        return {"status": "ok"}
 
     except HTTPException:
         raise

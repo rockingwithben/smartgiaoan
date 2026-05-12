@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { v4 as uuidv4 } from 'uuid';
 
 const rawBase = process.env.REACT_APP_BACKEND_URL
   ? process.env.REACT_APP_BACKEND_URL.replace(/\/$/, '')
@@ -19,16 +20,58 @@ if (initialToken) {
   http.defaults.headers.common['Authorization'] = `Bearer ${initialToken}`;
 }
 
-// WELD THE TOKEN ON EVERY REQUEST
+// WELD THE TOKEN ON EVERY REQUEST + ADD IDEMPOTENCY KEY
 http.interceptors.request.use((config) => {
   const token = localStorage.getItem('session_token');
+  config.headers = config.headers ?? {};
+
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
-  } else if (config.headers) {
+  } else {
     delete config.headers.Authorization;
   }
+
+  // Add Idempotency-Key for POST/PUT/PATCH requests to prevent duplicate writes
+  if (['post', 'put', 'patch'].includes(config.method?.toLowerCase())) {
+    config.headers['Idempotency-Key'] = config.headers['Idempotency-Key'] ?? uuidv4();
+  }
+
   return config;
 });
+
+// Response interceptor with request-scoped retry logic
+const MAX_RETRIES = 2;
+
+http.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const config = error.config;
+
+    if (!config) {
+      return Promise.reject(error);
+    }
+
+    const isNetworkError = !error.response;
+    const isServerError = error.response?.status >= 500;
+    const shouldRetry = isNetworkError || isServerError;
+
+    if (!shouldRetry) {
+      return Promise.reject(error);
+    }
+
+    config.__retryCount = config.__retryCount ?? 0;
+
+    if (config.__retryCount >= MAX_RETRIES) {
+      return Promise.reject(error);
+    }
+
+    config.__retryCount += 1;
+    const delay = 2 ** config.__retryCount * 1000;
+
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    return http(config);
+  }
+);
 
 // --- MANUAL AUTH EXPORTS (This is what Vercel was missing) ---
 export async function loginWithEmail(email, password) {
