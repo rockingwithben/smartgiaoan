@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime, timezone, timedelta
 from xml.sax.saxutils import escape as xml_escape
 from starlette.responses import RedirectResponse
+from typing import Optional
 
 # --- Cache for Gemini responses ---
 _gemini_cache = {}
@@ -78,6 +79,34 @@ load_dotenv(ROOT_DIR / '.env')
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# --- Environment Variable Validation ---
+def validate_env_vars():
+    required_vars = [
+        'MONGO_URL', 'DB_NAME', 'FRONTEND_URL', 'BACKEND_PUBLIC_URL',
+        'GEMINI_API_KEY', 'OPENROUTER_API_KEY', 'PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET',
+        'EMAIL_VERIFICATION_JWT_SECRET', 'JWT_VERIFICATION_SECRET'
+    ]
+    missing_vars = [var for var in required_vars if not os.environ.get(var)]
+    if missing_vars:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Missing critical environment variables: {', '.join(missing_vars)}"
+        )
+    if not os.environ.get('GOOGLE_APPLICATION_CREDENTIALS_JSON') and not os.environ.get('GEMINI_API_KEY'):
+        raise HTTPException(
+            status_code=500,
+            detail="Either GOOGLE_APPLICATION_CREDENTIALS_JSON or GEMINI_API_KEY must be set for AI functionality."
+        )
+
+try:
+    validate_env_vars()
+    logger.info("Environment variables validated successfully.")
+except HTTPException as e:
+    logger.error(f"Environment variable validation failed: {e.detail}")
+    # In a real production scenario, you might want to exit or handle this more gracefully.
+    # For now, we'll let FastAPI handle the HTTPException.
+    raise e
 
 ADMIN_EMAILS = set(e.strip().lower() for e in os.environ.get('ADMIN_EMAILS', 'bentaylors@hotmail.co.uk').split(',') if e.strip())
 
@@ -816,6 +845,32 @@ if not EMAIL_VERIFICATION_JWT_SECRET:
 # Add email_verified to the User model definition if it's not already there
 # (Assuming it's already added or handled by default in _load_user)
 
+async def get_current_user_optional(
+    request: Request,
+    session_token: Optional[str] = Cookie(None),
+    authorization: Optional[str] = Header(None)
+) -> Optional[User]:
+    token = session_token
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1].strip()
+    if not token:
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.lower().startswith("bearer "):
+            token = auth_header.split(" ", 1)[1].strip()
+    if not token:
+        return None
+    session = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
+    if not session or _parse_dt(session["expires_at"]) < _now():
+        return None
+    doc = await db.users.find_one({"user_id": session["user_id"]}, {"_id": 0})
+    return await _load_user(doc)
+
+
+async def require_user(user: Optional[User] = Depends(get_current_user_optional)) -> User:
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated or session expired")
+    return user
+
 # Add the /auth/send-verification endpoint
 @api_router.post("/auth/send-verification")
 async def send_verification(user: User = Depends(require_user)):
@@ -877,31 +932,6 @@ async def verify_email(payload: EmailVerificationRequest):
             raise HTTPException(status_code=500, detail="Failed to update verification status.")
 
     return {"status": "verified"}
-async def get_current_user_optional(
-    request: Request,
-    session_token: Optional[str] = Cookie(None),
-    authorization: Optional[str] = Header(None)
-) -> Optional[User]:
-    token = session_token
-    if authorization and authorization.lower().startswith("bearer "):
-        token = authorization.split(" ", 1)[1].strip()
-    if not token:
-        auth_header = request.headers.get("Authorization")
-        if auth_header and auth_header.lower().startswith("bearer "):
-            token = auth_header.split(" ", 1)[1].strip()
-    if not token:
-        return None
-    session = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
-    if not session or _parse_dt(session["expires_at"]) < _now():
-        return None
-    doc = await db.users.find_one({"user_id": session["user_id"]}, {"_id": 0})
-    return await _load_user(doc)
-
-
-async def require_user(user: Optional[User] = Depends(get_current_user_optional)) -> User:
-    if not user:
-        raise HTTPException(status_code=401, detail="Not authenticated or session expired")
-    return user
 
 
 @api_router.post("/auth/register")
@@ -1107,7 +1137,7 @@ async def update_profile(payload: ProfileUpdateRequest, user: User = Depends(req
 # API ROUTES — WORKSHEETS
 # ============================================================
 @api_router.post("/worksheets/generate")
-async def generate_ws(payload: WorksheetRequest, user: User = Depends(require_user), request: Request = Depends()): # Added Request dependency
+async def generate_ws(payload: WorksheetRequest, request: Request, user: User = Depends(require_user)): # Fixed: Request should not use Depends()
     # --- Idempotency Check ---
     idempotency_key = request.headers.get("Idempotency-Key")
     if idempotency_key:
@@ -1785,65 +1815,44 @@ async def paypal_webhook(request: Request):
         logger.error(f"PayPal webhook error: {e}")
         return {"status": "ok"}
 
-# NEW EMAIL VERIFICATION ENDPOINTS AND HELPER
-class EmailVerificationRequest(BaseModel):
-    token: str
+# MIDDLEWARE & ROUTING
+# ============================================================
+app.include_router(api_router)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
 
-async def _send_email(to_email: str, subject: str, content: str) -> None:
-    provider = os.environ.get('EMAIL_SERVICE_PROVIDER', '')
-    if provider and provider.lower() == 'sendgrid':
-        key = os.environ.get('EMAIL_API_KEY') or os.environ.get('SENDGRID_API_KEY')
-        sender = os.environ.get('EMAIL_FROM', 'noreply@smartgiaoan.com')
-        if not key:
-            logger.warning('SendGrid API key not configured; skipping email send')
-            return
-        payload = {
-            "personalizations": [{ "to": [ { "email": to_email } ] }],
-            "from": { "email": sender },
-            "subject": subject,
-            "content": [ { "type": "text/plain", "value": content } ]
-        }
-        headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-        async with httpx.AsyncClient() as client:
-            r = await client.post("https://api.sendgrid.com/v3/mail/send", headers=headers, json=payload)
-            try:
-                r.raise_for_status()
-            except Exception:
-                logger.warning("Email send failed via SendGrid")
-    else:
-        logger.info("Email service not configured; would send verification to: %s", to_email)
+@app.get("/")
+async def root():
+    return {
+        "app": "SmartGiaoAn API", "status": "operational", "version": "3.3.0",
+        "ai_engine": "vertex_ai" if USE_VERTEX_AI else "generative_ai",
+        "ai_region": GEMINI_REGION,
+    }
 
-@api_router.post("/auth/send-verification")
-async def send_verification(user: User = Depends(require_user)):
-    if getattr(user, 'email_verified', False):
-        return {"status": "already_verified"}
-    secret = os.environ.get('EMAIL_VERIFICATION_JWT_SECRET') or os.environ.get('JWT_VERIFICATION_SECRET')
-    if not secret:
-        raise HTTPException(status_code=500, detail="Email verification secret not configured")
-    exp = datetime.utcnow() + timedelta(hours=24)
-    data = {'user_id': user.user_id, 'email': user.email, 'exp': exp.isoformat()}
-    token = jwt.encode(data, secret, algorithm='HS256')
-    link = f"{FRONTEND_URL}/verify-email?token={token}"
-    await _send_email(user.email, 'Verify your SmartGiaoAn email', f'Please verify: {link}')
-    return {"status": "verification_sent"}
+@app.head("/")
+async def root_head():
+    return Response(status_code=200)
 
-class EmailVerificationRequest(BaseModel):
-    token: str
+@app.get("/worksheet_seo/{worksheet_id}")
+async def worksheet_seo_data(worksheet_id: str):
+    ws = await db.worksheets.find_one({"worksheet_id": worksheet_id}, {"_id": 0})
+    if not ws:
+        raise HTTPException(status_code=404, detail="Worksheet not found")
+    return ws
 
-@api_router.post("/auth/verify-email")
-async def verify_email(payload: EmailVerificationRequest):
-    secret = os.environ.get('EMAIL_VERIFICATION_JWT_SECRET') or os.environ.get('JWT_VERIFICATION_SECRET')
-    if not secret:
-        raise HTTPException(status_code=500, detail="Email verification secret not configured")
-    try:
-        data = jwt.decode(payload.token, secret, algorithms=["HS256"])
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid verification token")
-    user_id = data.get("user_id")
-    if not user_id:
-        raise HTTPException(status_code=400, detail="Invalid token payload")
-    await db.users.update_one({"user_id": user_id}, {"$set": {"email_verified": True}})
-    return {"status": "verified"}
+@app.get("/health")
+async def health():
+    return {
+        "status": "healthy",
+        "db": "connected" if mongo_client else "disconnected",
+        "ai_engine": "vertex_ai" if USE_VERTEX_AI else "generative_ai",
+        "ai_region": GEMINI_REGION,
+    }
 # MIDDLEWARE & ROUTING
 # ============================================================
 app.include_router(api_router)

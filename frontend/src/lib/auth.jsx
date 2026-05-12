@@ -61,7 +61,7 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('session_token');
     window.location.href = '/';
   }, []);
-f
+
   return (
     <AuthContext.Provider value={{ user, setUser, loading, startLogin, logout, checkAuth, refreshUser: checkAuth }}>
       {children}
