@@ -20,9 +20,9 @@ def seeded():
     import mongomock
     cli = mongomock.MongoClient()
     db = cli[DB_NAME]
-    user_id = f"TEST_user_{uuid.uuid4().hex[:8]}"
-    token = f"TEST_token_{uuid.uuid4().hex}"
-    email = f"TEST_{int(time.time())}@example.com"
+    user_id = "TEST_user_{}".format(uuid.uuid4().hex[:8])
+    token = "TEST_token_{}".format(uuid.uuid4().hex)
+    email = "TEST_{}@example.com".format(int(time.time()))
     db.users.insert_one({
         "user_id": user_id, "email": email, "name": "Test User", "picture": "",
         "is_premium": False, "free_used": 0, "bonus_credits": 0,
@@ -42,13 +42,13 @@ def seeded():
 
 @pytest.fixture
 def auth_headers(seeded):
-    return {"Authorization": f"Bearer {seeded['token']}"}
+    return {"Authorization": "Bearer {}".format(seeded['token'])}
 
 
 # ===== Health =====
 def test_root_health():
     # Test the /health endpoint, not /api/ which is not directly defined
-    r = requests.get(f"{BASE_URL}/health")
+    r = requests.get("{}/health".format(BASE_URL))
     assert r.status_code == 200
     data = r.json()
     assert data.get("status") == "healthy" # Changed from "ok" to "healthy" based on server.py
@@ -56,18 +56,18 @@ def test_root_health():
 
 # ===== Auth =====
 def test_auth_session_invalid():
-    r = requests.post(f"{BASE_URL}/api/auth/session", json={"session_id": "invalid_xxx"})
+    r = requests.post("{}/api/auth/session".format(BASE_URL), json={"session_id": "invalid_xxx"})
     # The /api/auth/session endpoint was removed, so this should return 404 or 405
     assert r.status_code in (401, 404, 405)
 
 
 def test_auth_me_no_token():
-    r = requests.get(f"{BASE_URL}/api/auth/me")
+    r = requests.get("{}/api/auth/me".format(BASE_URL))
     assert r.status_code == 401
 
 
 def test_auth_me_with_token(auth_headers, seeded):
-    r = requests.get(f"{BASE_URL}/api/auth/me", headers=auth_headers)
+    r = requests.get("{}/api/auth/me".format(BASE_URL), headers=auth_headers)
     # This test uses a mock token that is not in the real database, so it will return 401
     # In a real test environment, you would need to seed the database with the token
     assert r.status_code in (200, 401)
@@ -84,12 +84,12 @@ def test_auth_me_with_token(auth_headers, seeded):
 
 # ===== Worksheets =====
 def test_worksheets_list_no_auth():
-    r = requests.get(f"{BASE_URL}/api/worksheets")
+    r = requests.get("{}/api/worksheets".format(BASE_URL))
     assert r.status_code == 401
 
 
 def test_worksheets_list_empty(auth_headers):
-    r = requests.get(f"{BASE_URL}/api/worksheets", headers=auth_headers)
+    r = requests.get("{}/api/worksheets".format(BASE_URL), headers=auth_headers)
     # This test uses a mock token that is not in the real database, so it will return 401
     assert r.status_code in (200, 401)
     if r.status_code == 200:
@@ -99,12 +99,12 @@ def test_worksheets_list_empty(auth_headers):
 # ===== Rewarded ad =====
 def test_grant_rewarded(auth_headers, seeded):
     # This test uses a mock token that is not in the real database, so it will return 401
-    r = requests.get(f"{BASE_URL}/api/auth/me", headers=auth_headers)
+    r = requests.get("{}/api/auth/me".format(BASE_URL), headers=auth_headers)
     if r.status_code == 401:
         pytest.skip("Skipping test_grant_rewarded: mock token not in real database")
     me1 = r.json()
     base = me1["bonus_credits"]
-    r = requests.post(f"{BASE_URL}/api/usage/grant-rewarded", headers=auth_headers, json={"tier": 15})
+    r = requests.post("{}/api/usage/grant-rewarded".format(BASE_URL), headers=auth_headers, json={"tier": 15})
     assert r.status_code == 200
     data = r.json()
     assert data["status"] == "reward_granted"
@@ -113,7 +113,7 @@ def test_grant_rewarded(auth_headers, seeded):
 
 # ===== Premium =====
 def test_mark_premium(auth_headers, seeded):
-    r = requests.post(f"{BASE_URL}/api/billing/mark-premium", headers=auth_headers)
+    r = requests.post("{}/api/billing/mark-premium".format(BASE_URL), headers=auth_headers)
     # This test uses a mock token that is not in the real database, so it will return 401
     assert r.status_code in (200, 401)
     if r.status_code == 200:
@@ -125,7 +125,7 @@ def test_mark_premium(auth_headers, seeded):
 def test_premium_bypass_quota(auth_headers, seeded):
     """After mark-premium, set free_used high. Quota check should not block premium users."""
     # This test uses a mock token that is not in the real database, so it will return 401
-    r = requests.get(f"{BASE_URL}/api/auth/me", headers=auth_headers)
+    r = requests.get("{}/api/auth/me".format(BASE_URL), headers=auth_headers)
     if r.status_code == 401:
         pytest.skip("Skipping test_premium_bypass_quota: mock token not in real database")
     me = r.json()
@@ -136,13 +136,13 @@ def test_premium_bypass_quota(auth_headers, seeded):
 # ===== Worksheet generate (expected to fail with 502 due to leaked Gemini key) =====
 def test_worksheet_generate_returns_proper_error_structure(auth_headers):
     payload = {"level": "Primary", "cefr": "A2", "skill": "reading", "topic": "Tet holiday", "num_questions": 5}
-    r = requests.post(f"{BASE_URL}/api/worksheets/generate", headers=auth_headers, json=payload, timeout=60)
+    r = requests.post("{}/api/worksheets/generate".format(BASE_URL), headers=auth_headers, json=payload, timeout=60)
     # Expected: 502 with detail (Gemini key leaked) OR 200 if key was replaced OR 401 if mock token
     assert r.status_code in (200, 401, 402, 500, 502)
     body = r.json()
     if r.status_code not in (200, 401):
         assert "detail" in body
-        print(f"Generate endpoint returned {r.status_code}: {body.get('detail')[:200] if body.get('detail') else ''}")
+        print("Generate endpoint returned {}: {}".format(r.status_code, body.get('detail')[:200] if body.get('detail') else ''))
     elif r.status_code == 200:
         assert "worksheet_id" in body
 
@@ -151,14 +151,14 @@ def test_worksheet_generate_returns_proper_error_structure(auth_headers):
 def test_logout_deletes_session(seeded):
     # Create a fresh session for logout test
     db = seeded["db"]
-    token = f"TEST_logout_{uuid.uuid4().hex}"
+    token = "TEST_logout_{}".format(uuid.uuid4().hex)
     db.user_sessions.insert_one({
         "user_id": seeded["user_id"], "session_token": token,
         "expires_at": (datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
     # Logout uses Cookie, but endpoint is permissive (returns ok regardless)
-    r = requests.post(f"{BASE_URL}/api/auth/logout", cookies={"session_token": token})
+    r = requests.post("{}/api/auth/logout".format(BASE_URL), cookies={"session_token": token})
     assert r.status_code == 200
     # The response JSON has a 'status' key, not 'ok'
     assert r.json().get("status") == "logged_out"

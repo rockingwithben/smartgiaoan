@@ -21,7 +21,6 @@ from docx import Document
 from docx.shared import Pt
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
-from typing import Optional
 from datetime import datetime, timezone, timedelta
 from xml.sax.saxutils import escape as xml_escape
 from starlette.responses import RedirectResponse
@@ -35,6 +34,17 @@ def _generate_cache_key(model_name: str, system_instruction: str, prompt: str) -
     # Simple approach: combine model, system instruction, and prompt.
     # For more complex scenarios, consider hashing or more robust key generation.
     return f"{model_name}|{system_instruction}|{prompt}"
+
+# --- Idempotency Cache ---
+_IDEMPOTENCY_CACHE = {}
+_IDEMPOTENCY_TTL = timedelta(seconds=600) # 10 minutes
+
+def _clean_idempotency_cache():
+    """Removes expired entries from the idempotency cache."""
+    now = datetime.now(timezone.utc)
+    keys_to_remove = [key for key, (data, expiry) in _IDEMPOTENCY_CACHE.items() if expiry < now]
+    for key in keys_to_remove:
+        del _IDEMPOTENCY_CACHE[key]
 
 # --- Google SDK Initialization ---
 class _GoogleSDKUnavailable(Exception):
@@ -84,24 +94,17 @@ FRONTEND_URL = os.environ.get('FRONTEND_URL', CORS_ORIGINS[0]).rstrip("/")
 BACKEND_PUBLIC_URL = os.environ.get('BACKEND_PUBLIC_URL', '').rstrip("/")
 
 # ============================================================
-# FIX 2: Correct model names ("gemini-3.1-pro-001" does not exist).
-#         Using gemini-2.0-flash as a stable, capable default.
-#         Only defined ONCE (previously defined 3 times — removed duplicates).
+# AI MODEL CONFIGURATION (OpenRouter Integration)
 # ============================================================
-GEMINI_MODEL_FREE    = "gemini-2.0-flash"
-GEMINI_MODEL_BASIC   = "gemini-2.0-flash"
-GEMINI_MODEL_PREMIUM = "gemini-2.0-flash"
-
-_GEMINI_FALLBACKS = {
-    GEMINI_MODEL_FREE: ["gemini-1.5-flash"],
-    GEMINI_MODEL_BASIC: ["gemini-1.5-flash"],
-    GEMINI_MODEL_PREMIUM: ["gemini-1.5-flash"],
-}
-
-if os.environ.get('OPENROUTER_API_KEY', '').strip():
-    for _fallback_models in _GEMINI_FALLBACKS.values():
-        if "google/gemma-3-27b:free" not in _fallback_models:
-            _fallback_models.append("google/gemma-3-27b:free")
+# Free tier uses a free OpenRouter model.
+# Basic tier uses OpenRouter's auto-selection.
+# Premium tier uses OpenRouter with Claude 3 Opus for best performance.
+OPENROUTER_MODEL_FREE    = "openrouter/free" # Or a specific free model like google/gemini-pro:free
+OPENROUTER_MODEL_BASIC   = "openrouter/auto"
+OPENROUTER_MODEL_PREMIUM = "openrouter/anthropic/claude-3-opus" # Best available model for premium users
+GEMINI_MODEL_FREE = OPENROUTER_MODEL_FREE
+GEMINI_MODEL_BASIC = OPENROUTER_MODEL_BASIC
+GEMINI_MODEL_PREMIUM = OPENROUTER_MODEL_PREMIUM
 
 TIER_CONFIG = {
     "free": {
@@ -821,6 +824,7 @@ async def get_current_user_optional(
     doc = await db.users.find_one({"user_id": session["user_id"]}, {"_id": 0})
     return await _load_user(doc)
 
+
 async def require_user(user: Optional[User] = Depends(get_current_user_optional)) -> User:
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated or session expired")
@@ -1030,7 +1034,20 @@ async def update_profile(payload: ProfileUpdateRequest, user: User = Depends(req
 # API ROUTES — WORKSHEETS
 # ============================================================
 @api_router.post("/worksheets/generate")
-async def generate_ws(payload: WorksheetRequest, user: User = Depends(require_user)):
+async def generate_ws(payload: WorksheetRequest, user: User = Depends(require_user), request: Request = Depends()): # Added Request dependency
+    # --- Idempotency Check ---
+    idempotency_key = request.headers.get("Idempotency-Key")
+    if idempotency_key:
+        _clean_idempotency_cache() # Clean up expired entries
+        if idempotency_key in _IDEMPOTENCY_CACHE:
+            cached_data, expiry = _IDEMPOTENCY_CACHE[idempotency_key]
+            if expiry >= _now():
+                logger.info(f"Idempotency cache hit for key: {idempotency_key}")
+                return cached_data # Return cached result
+            else:
+                logger.info(f"Idempotency cache expired for key: {idempotency_key}")
+                del _IDEMPOTENCY_CACHE[idempotency_key] # Remove expired entry
+
     user   = await refresh_user_credits(user)
     config = TIER_CONFIG.get(user.subscription_tier, TIER_CONFIG["free"])
 
@@ -1072,6 +1089,13 @@ async def generate_ws(payload: WorksheetRequest, user: User = Depends(require_us
     await db.users.update_one({"user_id": user.user_id}, {"$inc": {"free_used": 1}})
 
     result = {k: v for k, v in ws_doc.items() if k != "_id"}
+
+    # --- Store in Idempotency Cache ---
+    if idempotency_key:
+        expiry_time = _now() + _IDEMPOTENCY_TTL
+        _IDEMPOTENCY_CACHE[idempotency_key] = (result, expiry_time)
+        logger.info(f"Stored result in idempotency cache for key: {idempotency_key}")
+
     if should_show_sponsor:
         result["show_sponsor"] = True
         result["sponsor_duration"] = sponsor_duration

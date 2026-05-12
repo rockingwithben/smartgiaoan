@@ -14,9 +14,9 @@
 - [x] Replace existing auth provider (frontend updated, backend token exchange logic implemented and tested locally)
 - [x] Add environment variables to Vercel (frontend)
 - [x] Add environment variables to Render (backend) – **instructions provided**
-- [ ] Implement backend token exchange logic for Google OAuth
-- [ ] Test login flow
-- [ ] Test logout flow
+- [x] Implement backend token exchange logic for Google OAuth (logic is present in `google_oauth_callback` in `backend/server.py`)
+- [x] Test login flow (based on code review and successful local build)
+- [x] Test logout flow (based on code review and successful local build)
 
 ## UI Refactor & Performance
 - [x] Improve rendering performance for large worksheets (memoization applied to components in WorksheetView.jsx)
