@@ -23,6 +23,7 @@ const ProfileSettings = lazy(() => import('./pages/ProfileSettings.jsx'));
 const AuthModal = lazy(() => import('./pages/AuthModal'));
 const WorksheetView = lazy(() => import('./pages/WorksheetView'));
 const WorksheetUpload = lazy(() => import('./pages/WorksheetUpload'));
+const VerifyEmail = lazy(() => import('./pages/VerifyEmail'));
 
 import { CookieConsent } from './components/CookieConsent';
 import { SponsorManager } from './components/SponsorManager';
@@ -84,6 +85,7 @@ function AppRouter() {
         <Route path="/worksheet/:id" element={<Suspense fallback={<PageLoading />}><WorksheetView /></Suspense>} />
         <Route path="/upload" element={<Suspense fallback={<PageLoading />}><WorksheetUpload /></Suspense>} />
         <Route path="/auth/callback" element={<Suspense fallback={<PageLoading />}><AuthCallback /></Suspense>} />
+        <Route path="/verify-email" element={<Suspense fallback={<PageLoading />}><VerifyEmail /></Suspense>} />
         <Route path="/about" element={<Suspense fallback={<PageLoading />}><About /></Suspense>} />
         <Route path="/pricing" element={<Suspense fallback={<PageLoading />}><Pricing /></Suspense>} />
         <Route path="/faq" element={<Suspense fallback={<PageLoading />}><FAQ /></Suspense>} />

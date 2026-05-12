@@ -11,6 +11,12 @@ export function AuthProvider({ children }) {
     try {
       const me = await getMe();
       if (me && me.user_id) {
+        // Check if email is verified, redirect to verification page if not
+        if (!me.email_verified) {
+          setUser(null); // Clear user state to ensure no partial access
+          window.location.href = '/verify-email'; // Redirect to verification page
+          return; // Stop further processing
+        }
         setUser(me);
       } else {
         setUser(null);
@@ -55,7 +61,7 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('session_token');
     window.location.href = '/';
   }, []);
-
+f
   return (
     <AuthContext.Provider value={{ user, setUser, loading, startLogin, logout, checkAuth, refreshUser: checkAuth }}>
       {children}

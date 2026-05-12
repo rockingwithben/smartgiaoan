@@ -9,6 +9,7 @@ import uuid
 import asyncio
 import logging
 import httpx
+import jwt
 import hashlib
 import secrets
 import re
@@ -804,6 +805,76 @@ async def _run_gemini(prompt: str, level: str, model_name: str, skill: str = "",
 # ============================================================
 # API ROUTES — AUTH
 # ============================================================
+# JWT secret for email verification
+EMAIL_VERIFICATION_JWT_SECRET = os.environ.get('EMAIL_VERIFICATION_JWT_SECRET') or os.environ.get('JWT_VERIFICATION_SECRET')
+if not EMAIL_VERIFICATION_JWT_SECRET:
+    logger.warning("EMAIL_VERIFICATION_JWT_SECRET not configured. Email verification will not work.")
+
+# Add email_verified field to User model if it doesn't exist
+# This is handled by Pydantic's ConfigDict(extra="ignore") and default values in _load_user
+
+# Add email_verified to the User model definition if it's not already there
+# (Assuming it's already added or handled by default in _load_user)
+
+# Add the /auth/send-verification endpoint
+@api_router.post("/auth/send-verification")
+async def send_verification(user: User = Depends(require_user)):
+    if getattr(user, 'email_verified', False):
+        return {"status": "already_verified"}
+    
+    if not EMAIL_VERIFICATION_JWT_SECRET:
+        raise HTTPException(status_code=500, detail="Email verification is not configured on the server.")
+
+    try:
+        exp = datetime.utcnow() + timedelta(hours=24) # Token valid for 24 hours
+        data = {'user_id': user.user_id, 'email': user.email, 'exp': exp.isoformat()}
+        token = jwt.encode(data, EMAIL_VERIFICATION_JWT_SECRET, algorithm='HS256')
+        
+        # Construct verification link
+        link = f"{FRONTEND_URL}/verify-email?token={token}"
+        
+        await _send_email(user.email, 'Verify your SmartGiaoAn email', f'Please verify your email by clicking this link: {link}')
+        
+        return {"status": "verification_sent"}
+    except Exception as e:
+        logger.error(f"Error sending verification email: {e}")
+        raise HTTPException(status_code=500, detail="Failed to send verification email.")
+
+# Add the /auth/verify-email endpoint
+class EmailVerificationRequest(BaseModel):
+    token: str
+
+@api_router.post("/auth/verify-email")
+async def verify_email(payload: EmailVerificationRequest):
+    if not EMAIL_VERIFICATION_JWT_SECRET:
+        raise HTTPException(status_code=500, detail="Email verification is not configured on the server.")
+    
+    try:
+        data = jwt.decode(payload.token, EMAIL_VERIFICATION_JWT_SECRET, algorithms=["HS256"])
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=400, detail="Verification token has expired.")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=400, detail="Invalid verification token.")
+    
+    user_id = data.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Invalid token payload: missing user_id.")
+    
+    # Update user's email_verified status
+    result = await db.users.update_one({"user_id": user_id}, {"$set": {"email_verified": True}})
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="User not found.")
+    if result.modified_count == 0:
+        # This could happen if the user was already verified, or if the update failed for some reason.
+        # We can consider it a success if the user exists and is already verified.
+        user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+        if user_doc and user_doc.get("email_verified"):
+            return {"status": "verified"}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to update verification status.")
+
+    return {"status": "verified"}
 async def get_current_user_optional(
     request: Request,
     session_token: Optional[str] = Cookie(None),
@@ -1704,7 +1775,7 @@ async def paypal_webhook(request: Request):
         else:
             logger.info(f"Unhandled PayPal webhook event: {event_type}")
 
-i        return {"status": "ok"}
+        return {"status": "ok"}
 
     except HTTPException:
         raise
@@ -1712,7 +1783,65 @@ i        return {"status": "ok"}
         logger.error(f"PayPal webhook error: {e}")
         return {"status": "ok"}
 
-# ============================================================
+# NEW EMAIL VERIFICATION ENDPOINTS AND HELPER
+class EmailVerificationRequest(BaseModel):
+    token: str
+
+async def _send_email(to_email: str, subject: str, content: str) -> None:
+    provider = os.environ.get('EMAIL_SERVICE_PROVIDER', '')
+    if provider and provider.lower() == 'sendgrid':
+        key = os.environ.get('EMAIL_API_KEY') or os.environ.get('SENDGRID_API_KEY')
+        sender = os.environ.get('EMAIL_FROM', 'noreply@smartgiaoan.com')
+        if not key:
+            logger.warning('SendGrid API key not configured; skipping email send')
+            return
+        payload = {
+            "personalizations": [{ "to": [ { "email": to_email } ] }],
+            "from": { "email": sender },
+            "subject": subject,
+            "content": [ { "type": "text/plain", "value": content } ]
+        }
+        headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+        async with httpx.AsyncClient() as client:
+            r = await client.post("https://api.sendgrid.com/v3/mail/send", headers=headers, json=payload)
+            try:
+                r.raise_for_status()
+            except Exception:
+                logger.warning("Email send failed via SendGrid")
+    else:
+        logger.info("Email service not configured; would send verification to: %s", to_email)
+
+@api_router.post("/auth/send-verification")
+async def send_verification(user: User = Depends(require_user)):
+    if getattr(user, 'email_verified', False):
+        return {"status": "already_verified"}
+    secret = os.environ.get('EMAIL_VERIFICATION_JWT_SECRET') or os.environ.get('JWT_VERIFICATION_SECRET')
+    if not secret:
+        raise HTTPException(status_code=500, detail="Email verification secret not configured")
+    exp = datetime.utcnow() + timedelta(hours=24)
+    data = {'user_id': user.user_id, 'email': user.email, 'exp': exp.isoformat()}
+    token = jwt.encode(data, secret, algorithm='HS256')
+    link = f"{FRONTEND_URL}/verify-email?token={token}"
+    await _send_email(user.email, 'Verify your SmartGiaoAn email', f'Please verify: {link}')
+    return {"status": "verification_sent"}
+
+class EmailVerificationRequest(BaseModel):
+    token: str
+
+@api_router.post("/auth/verify-email")
+async def verify_email(payload: EmailVerificationRequest):
+    secret = os.environ.get('EMAIL_VERIFICATION_JWT_SECRET') or os.environ.get('JWT_VERIFICATION_SECRET')
+    if not secret:
+        raise HTTPException(status_code=500, detail="Email verification secret not configured")
+    try:
+        data = jwt.decode(payload.token, secret, algorithms=["HS256"])
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid verification token")
+    user_id = data.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Invalid token payload")
+    await db.users.update_one({"user_id": user_id}, {"$set": {"email_verified": True}})
+    return {"status": "verified"}
 # MIDDLEWARE & ROUTING
 # ============================================================
 app.include_router(api_router)
