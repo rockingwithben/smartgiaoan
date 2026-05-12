@@ -819,6 +819,8 @@ if not EMAIL_VERIFICATION_JWT_SECRET:
 # Add the /auth/send-verification endpoint
 @api_router.post("/auth/send-verification")
 async def send_verification(user: User = Depends(require_user)):
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
     if getattr(user, 'email_verified', False):
         return {"status": "already_verified"}
     

@@ -1,7 +1,7 @@
 # SmartGiaoAn Production Readiness Status
 
 **Last Updated:** December 5, 2026  
-**Status:** 🟡 IN PROGRESS - Core Features Ready, Final Polish Needed
+**Status:** 🟡 IN PROGRESS - Email Verification Backend & Frontend Implemented, Awaiting End-to-End Testing
 
 ## ✅ COMPLETED FEATURES
 
@@ -21,6 +21,9 @@
 - [x] User role system (Teacher, Admin)
 - [x] Admin email configuration
 - [x] Session expiration (7 days)
+- [x] JWT-based email verification token generation and validation
+- [x] Backend endpoints for sending and verifying email verification tokens (`/auth/send-verification`, `/auth/verify-email`)
+- [x] User model updated with `email_verified` field
 
 ### AI Worksheet Generation
 - [x] OpenRouter integration (free, basic, premium models)
@@ -80,17 +83,20 @@
 - [x] Responsive design with Tailwind CSS
 - [x] Toast notifications (Sonner)
 - [x] Cookie consent
+- [x] VerifyEmail frontend page and route added
+- [x] AuthProvider updated to redirect unverified users to /verify-email
 
 ## 🟡 IN PROGRESS / PARTIALLY COMPLETE
 
-### Email Verification System
-- [x] Backend endpoints created (`/auth/send-verification`, `/auth/verify-email`)
-- [x] JWT token generation for email verification
-- [x] Frontend VerifyEmail page created
-- [x] Route added to App.js
-- [ ] Backend email sending via SendGrid (scaffolding exists, needs testing)
-- [ ] Integration with registration flow
-- [ ] Enforcement in AuthProvider (redirect unverified users)
+### Email Sending Configuration
+- [x] Backend logic for sending emails via SendGrid implemented (`_send_email` function)
+- [x] `.env` file updated with SendGrid configuration variables (EMAIL_SERVICE_PROVIDER, EMAIL_API_KEY, EMAIL_FROM)
+- [ ] **ACTION REQUIRED:** Replace placeholder `REDACTED` for `EMAIL_API_KEY` with actual SendGrid API key.
+- [ ] **ACTION REQUIRED:** Ensure `FRONTEND_URL` and `BACKEND_PUBLIC_URL` are correctly set for production.
+
+### Email Verification Flow
+- [ ] **ACTION REQUIRED:** Test end-to-end email verification flow with SendGrid integration enabled (email delivery, token link, token decoding, and `email_verified` flag update).
+- [ ] **ACTION REQUIRED:** Validate that unverified users are consistently redirected to the verification page and not allowed into protected sections.
 
 ### Worksheet Size Options
 - [ ] 1-page option (compact)
@@ -121,8 +127,9 @@
 - [ ] Monitoring and alerting
 
 ### Testing
-- [ ] End-to-end email verification tests
-- [ ] Payment integration tests
+- [ ] Add unit tests for email verification endpoints
+- [ ] End-to-end email verification tests (requires SendGrid setup)
+- [ ] Payment integration tests (production)
 - [ ] Worksheet generation quality tests
 - [ ] Load testing
 - [ ] Security testing
@@ -135,37 +142,15 @@
 
 ## 📋 IMMEDIATE NEXT STEPS
 
-1. **Email Verification Integration**
-   - Add SendGrid email sending to backend
-   - Integrate verification into registration flow
-   - Update AuthProvider to enforce verification
-   - Test end-to-end flow
-
-2. **Worksheet Size Options**
-   - Add UI toggles to Dashboard
-   - Implement backend parameter handling
-   - Update worksheet generation prompt
-
-3. **Multi-Skill Support**
-   - Add skill checkboxes to Dashboard
-   - Update generation endpoint
-   - Test skill combinations
-
-4. **Loading Screen**
-   - Design 3D animated component
-   - Integrate into worksheet generation flow
-
-5. **Testing & QA**
-   - Test all payment flows
-   - Test email verification
-   - Test worksheet generation quality
-   - Test tier restrictions
-
-6. **Production Deployment**
-   - Configure production environment variables
-   - Set up monitoring
-   - Deploy to production server
-   - Run smoke tests
+1.  **Configure SendGrid API Key:** Update `.env` with the actual SendGrid API key.
+2.  **Test Email Verification End-to-End:**
+    *   Trigger `/auth/send-verification` for a test user.
+    *   Verify email delivery via SendGrid logs or test inbox.
+    *   Click the verification link and confirm successful verification and redirection.
+    *   Attempt to access protected routes as an unverified user to confirm gating.
+3.  **Add Unit Tests:** Write unit tests for `/auth/send-verification` and `/auth/verify-email` endpoints.
+4.  **Update Production Readiness Status:** Mark email verification as complete and update remaining tasks.
+5.  **Proceed to Next Steps:** Address worksheet size options, multi-skill toggles, loading screen, and comprehensive testing.
 
 ## 🔧 TECHNICAL NOTES
 
@@ -191,12 +176,12 @@
 ### External Services
 - Google OAuth 2.0
 - PayPal API (sandbox/production)
-- SendGrid (email)
+- SendGrid (email) - **Configuration pending actual API key**
 - Unsplash (header images)
 
 ## 🚀 DEPLOYMENT CHECKLIST
 
-- [ ] All environment variables configured
+- [ ] All environment variables configured (including SendGrid API key and JWT secret)
 - [ ] Database indexes created
 - [ ] SSL certificates installed
 - [ ] CORS origins configured
