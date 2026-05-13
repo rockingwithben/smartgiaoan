@@ -26,6 +26,9 @@ from datetime import datetime, timezone, timedelta
 from xml.sax.saxutils import escape as xml_escape
 from starlette.responses import RedirectResponse
 from typing import Optional
+from collections import defaultdict
+import time
+import asyncio
 
 # --- Cache for Gemini responses ---
 _gemini_cache = {}
@@ -79,6 +82,26 @@ load_dotenv(ROOT_DIR / '.env')
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# --- Simple in-memory rate limiter for production readiness
+RATE_LIMIT_LOCK = asyncio.Lock()
+RATE_LIMIT_STORE: defaultdict[str, list[float]] = defaultdict(list)
+
+
+def get_rate_limit_dependency(limit: int = 60, window: int = 60):
+    async def _rate_limit(request: Request):
+        client_ip = request.client.host if request.client else "0.0.0.0"
+        key = f"{client_ip}:{request.url.path}"
+        now = time.time()
+        async with RATE_LIMIT_LOCK:
+            timestamps = RATE_LIMIT_STORE[key]
+            window_start = now - window
+            # keep only calls within the window
+            timestamps[:] = [ts for ts in timestamps if ts > window_start]
+            if len(timestamps) >= limit:
+                raise HTTPException(status_code=429, detail="Rate limit exceeded")
+            timestamps.append(now)
+    return _rate_limit
 
 # --- Environment Variable Validation ---
 def validate_env_vars():
@@ -1137,7 +1160,12 @@ async def update_profile(payload: ProfileUpdateRequest, user: User = Depends(req
 # API ROUTES — WORKSHEETS
 # ============================================================
 @api_router.post("/worksheets/generate")
-async def generate_ws(payload: WorksheetRequest, request: Request, user: User = Depends(require_user)): # Fixed: Request should not use Depends()
+async def generate_ws(
+    payload: WorksheetRequest,
+    request: Request,
+    user: User = Depends(require_user),
+    _: None = Depends(get_rate_limit_dependency(limit=60, window=60)),
+):  # Fixed: Request should not use Depends()
     # --- Idempotency Check ---
     idempotency_key = request.headers.get("Idempotency-Key")
     if idempotency_key:
@@ -1525,7 +1553,11 @@ async def public_library_feed_xml(
     return Response(content=feed, media_type="application/atom+xml")
 
 @api_router.post("/library/upload")
-async def upload_library_worksheet(payload: LibraryUploadRequest, user: User = Depends(require_user)):
+async def upload_library_worksheet(
+    payload: LibraryUploadRequest,
+    user: User = Depends(require_user),
+    _: None = Depends(get_rate_limit_dependency(limit=60, window=60)),
+):
     primary_skill = payload.skills[0] if payload.skills else "reading"
     ws_id = f"ws_{uuid.uuid4().hex[:12]}"
     ws_doc = {
@@ -1815,44 +1847,10 @@ async def paypal_webhook(request: Request):
         logger.error(f"PayPal webhook error: {e}")
         return {"status": "ok"}
 
-# MIDDLEWARE & ROUTING
-# ============================================================
-app.include_router(api_router)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"]
-)
+@api_router.get("/internal/rate-limit-test")
+async def rate_limit_test(_: None = Depends(get_rate_limit_dependency(limit=3, window=1))):
+    return {"status": "ok"}
 
-@app.get("/")
-async def root():
-    return {
-        "app": "SmartGiaoAn API", "status": "operational", "version": "3.3.0",
-        "ai_engine": "vertex_ai" if USE_VERTEX_AI else "generative_ai",
-        "ai_region": GEMINI_REGION,
-    }
-
-@app.head("/")
-async def root_head():
-    return Response(status_code=200)
-
-@app.get("/worksheet_seo/{worksheet_id}")
-async def worksheet_seo_data(worksheet_id: str):
-    ws = await db.worksheets.find_one({"worksheet_id": worksheet_id}, {"_id": 0})
-    if not ws:
-        raise HTTPException(status_code=404, detail="Worksheet not found")
-    return ws
-
-@app.get("/health")
-async def health():
-    return {
-        "status": "healthy",
-        "db": "connected" if mongo_client else "disconnected",
-        "ai_engine": "vertex_ai" if USE_VERTEX_AI else "generative_ai",
-        "ai_region": GEMINI_REGION,
-    }
 # MIDDLEWARE & ROUTING
 # ============================================================
 app.include_router(api_router)

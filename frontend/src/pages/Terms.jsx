@@ -58,7 +58,7 @@ export default function Terms() {
 
       <h2 className="font-display text-3xl mt-10">4. The AI Reality Check</h2>
       <p className="mt-3 text-muted-foreground leading-relaxed">
-        SmartGiaoAn is powered by an emergent AI agent. That means it dynamically adapts to your prompts to create completely unique materials.
+        SmartGiaoAn is powered by an advanced AI engine. That means it dynamically adapts to your prompts to create completely unique materials.
       </p>
       <p className="mt-3 text-muted-foreground leading-relaxed">
         But let’s be real: AI is not a human teacher. While the engine is strictly tuned to Cambridge standards, it might occasionally hallucinate or make a weird grammar choice. <strong className="text-ink">You are the expert in the room.</strong> Always give the worksheet a quick read-through before handing it out to 30 students.
