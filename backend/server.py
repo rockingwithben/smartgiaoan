@@ -162,7 +162,7 @@ EMAIL_FROM = os.environ.get('EMAIL_FROM', '').strip()
 # AI MODEL CONFIGURATION (OpenRouter Integration)
 # ============================================================
 # Free tier uses a free OpenRouter model.
-# Basic tier uses OpenRouter's auto-selection.
+# Mid-tier / Pro uses OpenRouter's auto-selection.
 # Premium tier uses OpenRouter with Claude 3 Opus for best performance.
 OPENROUTER_MODEL_FREE    = "openrouter/free" # Or a specific free model like google/gemini-pro:free
 OPENROUTER_MODEL_BASIC   = "openrouter/auto"
@@ -196,7 +196,7 @@ TIER_CONFIG = {
         "has_ads": False,
     },
     "pro": {
-        "model": GEMINI_MODEL_PREMIUM,
+        "model": GEMINI_MODEL_BASIC,
         "monthly_quota": 999999,
         "ai_edits_per_month": 999999,
         "has_word_editor": True,

@@ -5,6 +5,7 @@ import uuid
 import jwt
 import requests
 import pytest
+import backend.server as srv
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://smartgiaoan.onrender.com').rstrip('/')
 
@@ -263,3 +264,9 @@ def test_verify_email_expired_token(auth_headers, seeded):
     r = requests.post(f"{BASE_URL}/api/auth/verify-email", json={"token": expired_token})
     assert r.status_code == 400
     assert "Verification token has expired" in r.json().get("detail", "")
+
+
+def test_openrouter_tier_model_mapping():
+    assert srv.TIER_CONFIG["free"]["model"] == srv.OPENROUTER_MODEL_FREE
+    assert srv.TIER_CONFIG["pro"]["model"] == srv.OPENROUTER_MODEL_BASIC
+    assert srv.TIER_CONFIG["premium"]["model"] == srv.OPENROUTER_MODEL_PREMIUM
