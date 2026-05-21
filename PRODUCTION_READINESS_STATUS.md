@@ -161,6 +161,85 @@ Ensure `EMAIL_VERIFICATION_JWT_SECRET` or `JWT_VERIFICATION_SECRET` is set to a 
 ### Step 4: (Optional) Development Testing
 Keep `EMAIL_SERVICE_PROVIDER=log` locally to see emails in server console logs without sending
 
+## 🚀 RENDER DEPLOYMENT ENVIRONMENT VARIABLES
+
+### Required Variables (Deployment Will Fail Without These)
+
+#### Database
+```
+MONGO_URL=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/?retryWrites=true&w=majority
+DB_NAME=smartgiaoan
+```
+
+#### URLs & Domains
+```
+FRONTEND_URL=https://smartgiaoan.site
+BACKEND_PUBLIC_URL=https://api.smartgiaoan.site
+```
+
+#### Email Verification (Pick One or Set Both)
+```
+EMAIL_VERIFICATION_JWT_SECRET=<generate_strong_32+_char_secret>
+JWT_VERIFICATION_SECRET=<generate_strong_32+_char_secret>
+```
+**⚠️ IMPORTANT:** Use `openssl rand -hex 16` or similar to generate a strong secret. Minimum 32 characters.
+
+#### Email Service (SendGrid)
+```
+EMAIL_SERVICE_PROVIDER=sendgrid
+EMAIL_API_KEY=<sendgrid_api_key>
+EMAIL_FROM=noreply@smartgiaoan.site
+```
+
+#### Google OAuth
+```
+GOOGLE_CLIENT_ID=<google_oauth_client_id>
+GOOGLE_CLIENT_SECRET=<google_oauth_client_secret>
+GOOGLE_CALLBACK_URL=https://api.smartgiaoan.site/auth/google/callback
+```
+
+#### AI Models (Select One or Provide Fallbacks)
+```
+GEMINI_API_KEY=<gemini_api_key>
+OPENROUTER_API_KEY=<openrouter_api_key>
+```
+
+#### PayPal Integration
+```
+PAYPAL_CLIENT_ID=<paypal_client_id>
+PAYPAL_CLIENT_SECRET=<paypal_client_secret>
+PAYPAL_BASE_URL=https://api-m.sandbox.paypal.com
+PAYPAL_PREMIUM_PLAN_ID=<paypal_premium_plan_id>
+PAYPAL_PRO_PLAN_ID=<paypal_pro_plan_id>
+PAYPAL_WEBHOOK_ID=<paypal_webhook_id>
+```
+
+#### Optional Configuration
+```
+CORS_ORIGINS=https://smartgiaoan.site,https://www.smartgiaoan.site
+ADMIN_EMAILS=bentaylors@hotmail.co.uk
+GEMINI_REGION=us-central1
+```
+
+### Render Setup Instructions
+
+1. Create a new Web Service on Render
+2. Connect your GitHub repository (rockingwithben/smartgiaoan)
+3. Set **Build Command**: `cd frontend && npm run build`
+4. Set **Start Command**: `cd backend && uvicorn server:app --host 0.0.0.0 --port $PORT`
+5. Go to **Environment** tab and add ALL required variables above
+6. Deploy and monitor logs
+
+### Generate Strong Secrets
+
+```bash
+# Generate a 32-character secret for JWT
+openssl rand -hex 16
+
+# Example output (use your own):
+# a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6
+```
+
 ## 🔧 TECHNICAL NOTES
 
 ### Backend Stack
