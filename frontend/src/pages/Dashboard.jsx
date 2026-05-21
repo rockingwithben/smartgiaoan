@@ -88,6 +88,14 @@ export default function Dashboard() {
     return 'Unlimited (ads)';
   };
 
+  const getModelLabel = () => {
+    if (!tierInfo?.model) return null;
+    if (tierInfo.model.includes('openrouter/free')) return 'OpenRouter Free';
+    if (tierInfo.model.includes('openrouter/auto')) return 'OpenRouter Auto';
+    if (tierInfo.model.includes('claude')) return 'Claude 3 Opus';
+    return tierInfo.model;
+  };
+
   const handleGenerate = async (e) => {
     e.preventDefault();
     if (!form.topic.trim()) {
@@ -220,6 +228,11 @@ export default function Dashboard() {
               ) : (
                 <span className="inline-flex items-center gap-1 text-gray-600 font-medium">
                   <Sparkles size={14} /> Free — Unlimited (random ads) • {tierInfo?.remaining_this_month || '∞'} left
+                </span>
+              )}
+              {tierInfo?.tier && getModelLabel() && (
+                <span className="block text-xs text-gray-400 mt-1">
+                  AI engine: {getModelLabel()}
                 </span>
               )}
             </p>
