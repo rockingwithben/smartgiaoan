@@ -40,6 +40,7 @@ def _generate_cache_key(model_name: str, system_instruction: str, prompt: str) -
     # For more complex scenarios, consider hashing or more robust key generation.
     return f"{model_name}|{system_instruction}|{prompt}"
 
+
 # --- Idempotency Cache ---
 _IDEMPOTENCY_CACHE = {}
 _IDEMPOTENCY_TTL = timedelta(seconds=600) # 10 minutes
@@ -108,9 +109,11 @@ def validate_env_vars():
     required_vars = [
         'MONGO_URL', 'DB_NAME', 'FRONTEND_URL', 'BACKEND_PUBLIC_URL',
         'GEMINI_API_KEY', 'OPENROUTER_API_KEY', 'PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET',
-        'EMAIL_VERIFICATION_JWT_SECRET', 'JWT_VERIFICATION_SECRET'
+        # Email verification needs one valid secret key.
     ]
     missing_vars = [var for var in required_vars if not os.environ.get(var)]
+    if not (os.environ.get('EMAIL_VERIFICATION_JWT_SECRET') or os.environ.get('JWT_VERIFICATION_SECRET')):
+        missing_vars.append('EMAIL_VERIFICATION_JWT_SECRET or JWT_VERIFICATION_SECRET')
     if missing_vars:
         raise HTTPException(
             status_code=500,
@@ -145,6 +148,10 @@ CORS_ORIGINS = [o.strip() for o in _cors_env.split(',') if o.strip()] or [
 ]
 FRONTEND_URL = os.environ.get('FRONTEND_URL', CORS_ORIGINS[0]).rstrip("/")
 BACKEND_PUBLIC_URL = os.environ.get('BACKEND_PUBLIC_URL', '').rstrip("/")
+
+EMAIL_SERVICE_PROVIDER = os.environ.get('EMAIL_SERVICE_PROVIDER', 'log').strip().lower()
+EMAIL_API_KEY = os.environ.get('EMAIL_API_KEY', '').strip()
+EMAIL_FROM = os.environ.get('EMAIL_FROM', '').strip()
 
 # ============================================================
 # AI MODEL CONFIGURATION (OpenRouter Integration)
@@ -293,6 +300,7 @@ class User(BaseModel):
     free_used: int = 0
     bonus_credits: int = 0
     ai_edit_credits: int = 0
+    email_verified: bool = False
     monthly_reset_at: Optional[datetime] = None
     paypal_subscription_id: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -368,11 +376,43 @@ def _parse_dt(v):
 async def _load_user(doc: dict) -> Optional[User]:
     if not doc:
         return None
+    if 'email_verified' not in doc:
+        doc['email_verified'] = False
     if "subscription_tier" not in doc:
         doc["subscription_tier"] = "premium" if doc.get("is_premium") else "free"
     if "ai_edit_credits" not in doc:
         doc["ai_edit_credits"] = 0
     return User(**doc)
+
+async def _send_email(to_email: str, subject: str, content: str) -> bool:
+    """Send email with the configured provider or log the content when no provider is configured."""
+    if EMAIL_SERVICE_PROVIDER == 'sendgrid':
+        if not EMAIL_API_KEY or not EMAIL_FROM:
+            raise ValueError("SendGrid email provider configured but EMAIL_API_KEY or EMAIL_FROM is missing.")
+        try:
+            async with httpx.AsyncClient() as client:
+                payload = {
+                    "personalizations": [{"to": [{"email": to_email}]}],
+                    "from": {"email": EMAIL_FROM},
+                    "subject": subject,
+                    "content": [{"type": "text/plain", "value": content}],
+                }
+                headers = {
+                    "Authorization": f"Bearer {EMAIL_API_KEY}",
+                    "Content-Type": "application/json",
+                }
+                resp = await client.post("https://api.sendgrid.com/v3/mail/send", json=payload, headers=headers, timeout=30)
+                resp.raise_for_status()
+                logger.info(f"SendGrid email sent to {to_email}")
+                return True
+        except Exception as e:
+            logger.error(f"SendGrid email send failed: {e}")
+            raise
+    if EMAIL_SERVICE_PROVIDER in ('log', 'console'):
+        logger.info("Email provider not configured for production; logging email content instead.")
+        logger.info(f"To: {to_email}\nSubject: {subject}\n{content}")
+        return True
+    raise ValueError(f"Unsupported email provider: {EMAIL_SERVICE_PROVIDER}")
 
 async def refresh_user_credits(user: User) -> User:
     now = _now()
@@ -907,7 +947,7 @@ async def send_verification(user: User = Depends(require_user)):
 
     try:
         exp = datetime.utcnow() + timedelta(hours=24) # Token valid for 24 hours
-        data = {'user_id': user.user_id, 'email': user.email, 'exp': exp.isoformat()}
+        data = {'user_id': user.user_id, 'email': user.email, 'exp': exp}
         token = jwt.encode(data, EMAIL_VERIFICATION_JWT_SECRET, algorithm='HS256')
         
         # Construct verification link
@@ -970,6 +1010,7 @@ async def auth_register(payload: EmailAuthRequest, response: Response):
         "role": payload.role or "Teacher",
         "password_hash": hash_password(payload.password),
         "is_premium": is_admin,
+        "email_verified": False,
         "subscription_tier": "premium" if is_admin else "free",
         "free_used": 0, "bonus_credits": 0, "ai_edit_credits": 0,
         "created_at": _now().isoformat()
@@ -1076,6 +1117,7 @@ async def google_oauth_callback(
                 "picture": picture or "",
                 "role": "Teacher", # Default role
                 "is_premium": is_admin,
+                "email_verified": True,
                 "subscription_tier": "premium" if is_admin else "free",
                 "free_used": 0,
                 "bonus_credits": 0,
@@ -1086,6 +1128,8 @@ async def google_oauth_callback(
             logger.info(f"New user created: {email}")
         else:
             # Update user info if changed (e.g., picture, name)
+            if not user_doc.get("email_verified", False):
+                await db.users.update_one({"user_id": user_doc["user_id"]}, {"$set": {"email_verified": True}})
             updates = {}
             if user_doc.get("name") != name and name:
                 updates["name"] = name
@@ -1853,7 +1897,7 @@ async def rate_limit_test(_: None = Depends(get_rate_limit_dependency(limit=3, w
 
 # MIDDLEWARE & ROUTING
 # ============================================================
-app.include_router(api_router)
+app.include_router(api_router, dependencies=[Depends(get_rate_limit_dependency(limit=60, window=60))])
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
