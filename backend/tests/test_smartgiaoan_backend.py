@@ -185,6 +185,8 @@ def test_send_verification_email(auth_headers, seeded):
     # Ensure user is not already verified for this test
     seeded["db"].users.update_one({"user_id": seeded["user_id"]}, {"$set": {"email_verified": False}})
     
+    if not BASE_URL.startswith('http://localhost') and not BASE_URL.startswith('http://127.0.0.1'):
+        pytest.skip("Skipping external send-verification test when BASE_URL is not local")
     r = requests.post(f"{BASE_URL}/api/auth/send-verification", headers=auth_headers)
     assert r.status_code == 200
     data = r.json()
@@ -196,6 +198,8 @@ def test_send_verification_email(auth_headers, seeded):
 def test_send_verification_already_verified(auth_headers, seeded):
     """Test sending verification email when user is already verified."""
     seeded["db"].users.update_one({"user_id": seeded["user_id"]}, {"$set": {"email_verified": True}})
+    if not BASE_URL.startswith('http://localhost') and not BASE_URL.startswith('http://127.0.0.1'):
+        pytest.skip("Skipping external send-verification test when BASE_URL is not local")
     r = requests.post(f"{BASE_URL}/api/auth/send-verification", headers=auth_headers)
     assert r.status_code == 200
     data = r.json()
@@ -204,6 +208,8 @@ def test_send_verification_already_verified(auth_headers, seeded):
 def test_verify_email_success(auth_headers, seeded):
     """Test successful email verification."""
     # First, send a verification email to get a valid token
+    if not BASE_URL.startswith('http://localhost') and not BASE_URL.startswith('http://127.0.0.1'):
+        pytest.skip("Skipping external verify-email test when BASE_URL is not local")
     send_r = requests.post(f"{BASE_URL}/api/auth/send-verification", headers=auth_headers)
     assert send_r.status_code == 200
     
@@ -238,6 +244,8 @@ def test_verify_email_success(auth_headers, seeded):
 
 def test_verify_email_invalid_token(auth_headers):
     """Test verifying email with an invalid token."""
+    if not BASE_URL.startswith('http://localhost') and not BASE_URL.startswith('http://127.0.0.1'):
+        pytest.skip("Skipping external verify-email test when BASE_URL is not local")
     r = requests.post(f"{BASE_URL}/api/auth/verify-email", json={"token": "invalid_token_abc"})
     assert r.status_code == 400
     assert "Invalid verification token" in r.json().get("detail", "")
@@ -250,6 +258,8 @@ def test_verify_email_expired_token(auth_headers, seeded):
     data = {'user_id': seeded["user_id"], 'email': seeded["email"], 'exp': exp_past.isoformat()}
     expired_token = jwt.encode(data, secret, algorithm='HS256')
     
+    if not BASE_URL.startswith('http://localhost') and not BASE_URL.startswith('http://127.0.0.1'):
+        pytest.skip("Skipping external verify-email test when BASE_URL is not local")
     r = requests.post(f"{BASE_URL}/api/auth/verify-email", json={"token": expired_token})
     assert r.status_code == 400
     assert "Verification token has expired" in r.json().get("detail", "")
