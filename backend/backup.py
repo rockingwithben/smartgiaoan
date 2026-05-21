@@ -28,7 +28,7 @@ BACKUP_DIR.mkdir(parents=True, exist_ok=True)
 
 def _timestamp() -> str:
     """Return a UTC timestamp suitable for filenames."""
-    return datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 def perform_mongo_backup(mongo_uri: str | None = None, backup_dir: Path | None = None) -> Dict[str, object]:
     """

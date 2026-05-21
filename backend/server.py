@@ -114,8 +114,11 @@ def validate_env_vars():
         # Email verification needs one valid secret key.
     ]
     missing_vars = [var for var in required_vars if not os.environ.get(var)]
-    if not (os.environ.get('EMAIL_VERIFICATION_JWT_SECRET') or os.environ.get('JWT_VERIFICATION_SECRET')):
+    jwt_secret = os.environ.get('EMAIL_VERIFICATION_JWT_SECRET') or os.environ.get('JWT_VERIFICATION_SECRET')
+    if not jwt_secret:
         missing_vars.append('EMAIL_VERIFICATION_JWT_SECRET or JWT_VERIFICATION_SECRET')
+    elif len(jwt_secret) < 32:
+        missing_vars.append('EMAIL_VERIFICATION_JWT_SECRET or JWT_VERIFICATION_SECRET (must be at least 32 characters)')
     if missing_vars:
         raise HTTPException(
             status_code=500,
@@ -976,7 +979,7 @@ async def send_verification(user: User = Depends(require_user)):
         raise HTTPException(status_code=500, detail="Email verification is not configured on the server.")
 
     try:
-        exp = datetime.utcnow() + timedelta(hours=24) # Token valid for 24 hours
+        exp = datetime.now(timezone.utc) + timedelta(hours=24)  # Token valid for 24 hours
         data = {'user_id': user.user_id, 'email': user.email, 'exp': exp}
         token = jwt.encode(data, EMAIL_VERIFICATION_JWT_SECRET, algorithm='HS256')
         

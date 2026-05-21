@@ -45,7 +45,7 @@ def client_with_app(test_seeded, monkeypatch):
     # Bind the in-memory DB to the server module so endpoints use it
     srv.db = test_seeded["db"]
     # Ensure a known secret for token generation during tests
-    srv.EMAIL_VERIFICATION_JWT_SECRET = "test-secret"
+    srv.EMAIL_VERIFICATION_JWT_SECRET = "test-secret-01234567890123456789012"
     # Patch _send_email to capture the verification email content
     captured = {}
     def fake_send_email(to_email, subject, content):

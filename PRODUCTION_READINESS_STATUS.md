@@ -149,6 +149,7 @@ EMAIL_FROM=noreply@smartgiaoan.site
 FRONTEND_URL=https://smartgiaoan.site
 BACKEND_PUBLIC_URL=https://api.smartgiaoan.site
 ```
+Ensure `EMAIL_VERIFICATION_JWT_SECRET` or `JWT_VERIFICATION_SECRET` is set to a strong secret of at least 32 characters.
 
 ### Step 3: Test the Flow
 - Register a new user via email/password

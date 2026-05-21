@@ -14,7 +14,8 @@ def test_signature_verification():
             "paypal-transmission-id": "TEST_TRANSMISSION_ID",
             "paypal-transmission-time": "2023-01-01T12:00:00Z",
             "paypal-auth-algo": "SHA256",
-            "paypal-transmission-sig": "TEST_SIGNATURE"
+            "paypal-transmission-sig": "TEST_SIGNATURE",
+            "paypal-webhook-id": "TEST_WEBHOOK_ID"
         },
         "body": '{"event_type": "PAYMENT.SALE.COMPLETED", "resource": {"custom_id": "user_12345"}}'
     }
@@ -34,11 +35,7 @@ def test_signature_verification():
     
     # Check if all required headers are present
     missing_headers = [h for h in required_headers if h not in mock_webhook_data["headers"]]
-    if missing_headers:
-        print(f"Missing headers: {missing_headers}")
-        return False
-    else:
-        print("All required headers present")
+    assert not missing_headers, f"Missing headers: {missing_headers}"
     
     # Test verification data construction
     verification_data = {
@@ -51,10 +48,9 @@ def test_signature_verification():
         "webhook_event": json.loads(mock_webhook_data["body"])
     }
     
+    assert verification_data["webhook_event"].get("event_type") is not None
     print("Verification data constructed successfully")
     print("Webhook event type:", verification_data["webhook_event"].get("event_type"))
-    
-    return True
 
 if __name__ == "__main__":
     success = test_signature_verification()

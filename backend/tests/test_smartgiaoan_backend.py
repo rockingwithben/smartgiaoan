@@ -254,7 +254,7 @@ def test_verify_email_expired_token(auth_headers, seeded):
     """Test verifying email with an expired token."""
     # Simulate an expired token (e.g., by setting exp in the past)
     secret = os.environ.get('EMAIL_VERIFICATION_JWT_SECRET') or os.environ.get('JWT_VERIFICATION_SECRET')
-    exp_past = datetime.utcnow() - timedelta(hours=1)
+    exp_past = datetime.now(timezone.utc) - timedelta(hours=1)
     data = {'user_id': seeded["user_id"], 'email': seeded["email"], 'exp': exp_past.isoformat()}
     expired_token = jwt.encode(data, secret, algorithm='HS256')
     
