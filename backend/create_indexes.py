@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Create MongoDB indexes for production."""
 import os
-import sys
 from motor.motor_asyncio import AsyncIOMotorClient
 from dotenv import load_dotenv
 

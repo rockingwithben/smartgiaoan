@@ -28,7 +28,6 @@ from starlette.responses import RedirectResponse
 from typing import Optional
 from collections import defaultdict
 import time
-import asyncio
 
 # --- Cache for Gemini responses ---
 _gemini_cache = {}
@@ -39,7 +38,6 @@ def _generate_cache_key(model_name: str, system_instruction: str, prompt: str) -
     # Simple approach: combine model, system instruction, and prompt.
     # For more complex scenarios, consider hashing or more robust key generation.
     return f"{model_name}|{system_instruction}|{prompt}"
-
 
 # --- Idempotency Cache ---
 _IDEMPOTENCY_CACHE = {}
@@ -165,6 +163,11 @@ OPENROUTER_MODEL_PREMIUM = "openrouter/anthropic/claude-3-opus" # Best available
 GEMINI_MODEL_FREE = OPENROUTER_MODEL_FREE
 GEMINI_MODEL_BASIC = OPENROUTER_MODEL_BASIC
 GEMINI_MODEL_PREMIUM = OPENROUTER_MODEL_PREMIUM
+_GEMINI_FALLBACKS = {
+    OPENROUTER_MODEL_FREE: ["gemini-1.5-flash"],
+    OPENROUTER_MODEL_BASIC: ["gemini-1.5-flash"],
+    OPENROUTER_MODEL_PREMIUM: ["gemini-1.5-flash"],
+}
 
 TIER_CONFIG = {
     "free": {

@@ -27,7 +27,6 @@ const VerifyEmail = lazy(() => import('./pages/VerifyEmail'));
 
 import { CookieConsent } from './components/CookieConsent';
 import { SponsorManager } from './components/SponsorManager';
-import { SEO } from './meta'; // Import SEO component
 import GoogleAdSenseScript from './components/GoogleAdSense';
 
 // Simple loading fallback component

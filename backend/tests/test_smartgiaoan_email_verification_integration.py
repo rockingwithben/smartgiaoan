@@ -1,5 +1,4 @@
 """email verification integration tests for SmartGiaoAn backend."""
-import os
 import re
 import uuid
 import time

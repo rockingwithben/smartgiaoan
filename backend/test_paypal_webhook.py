@@ -2,8 +2,6 @@
 """Test script to verify PayPal webhook signature verification."""
 
 import json
-import httpx
-from typing import Dict, Any
 import os
 
 def test_signature_verification():

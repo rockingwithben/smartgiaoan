@@ -2,13 +2,13 @@
 import os
 import time
 import uuid
+import jwt
 import requests
 import pytest
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://smartgiaoan.onrender.com').rstrip('/')
 
 # Read backend env to get mongo for seeding
-from pymongo import MongoClient
 from datetime import datetime, timezone, timedelta
 
 MONGO_URL = os.environ.get('MONGO_URL', 'mongodb://localhost:27017')
@@ -102,8 +102,6 @@ def test_grant_rewarded(auth_headers, seeded):
     r = requests.get("{}/api/auth/me".format(BASE_URL), headers=auth_headers)
     if r.status_code == 401:
         pytest.skip("Skipping test_grant_rewarded: mock token not in real database")
-    me1 = r.json()
-    base = me1["bonus_credits"]
     r = requests.post("{}/api/usage/grant-rewarded".format(BASE_URL), headers=auth_headers, json={"tier": 15})
     assert r.status_code == 200
     data = r.json()
@@ -255,80 +253,3 @@ def test_verify_email_expired_token(auth_headers, seeded):
     r = requests.post(f"{BASE_URL}/api/auth/verify-email", json={"token": expired_token})
     assert r.status_code == 400
     assert "Verification token has expired" in r.json().get("detail", "")
-
-# ===== Mongo persistence shape =====
-def test_mongo_documents_shape(seeded):
-    db = seeded["db"]
-    u = db.users.find_one({"user_id": seeded["user_id"]})
-    assert u is not None
-    assert u["user_id"] == seeded["user_id"]
-    # created_at stored as ISO string
-    assert isinstance(u["created_at"], str)
-    s = db.user_sessions.find_one({"user_id": seeded["user_id"]})
-    assert s is not None
-    assert isinstance(s["expires_at"], str)
-
-# ===== Email Verification =====
-# NOTE: These tests assume EMAIL_VERIFICATION_JWT_SECRET is set in the environment.
-# They also assume SendGrid is NOT configured, so _send_email will log a message instead of sending.
-# For full end-to-end testing, a real SendGrid API key and a test email account are needed.
-
-def test_send_verification_email(auth_headers, seeded):
-    """Test sending a verification email."""
-    # Ensure user is not already verified for this test
-    seeded["db"].users.update_one({"user_id": seeded["user_id"]}, {"$set": {"email_verified": False}})
-    
-    r = requests.post(f"{BASE_URL}/api/auth/send-verification", headers=auth_headers)
-    assert r.status_code == 200
-    data = r.json()
-    assert data.get("status") == "verification_sent"
-    # Check that email_verified is still False
-    user_doc = seeded["db"].users.find_one({"user_id": seeded["user_id"]})
-    assert user_doc.get("email_verified") is False
-
-def test_send_verification_already_verified(auth_headers, seeded):
-    """Test sending verification email when user is already verified."""
-    seeded["db"].users.update_one({"user_id": seeded["user_id"]}, {"$set": {"email_verified": True}})
-    r = requests.post(f"{BASE_URL}/api/auth/send-verification", headers=auth_headers)
-    assert r.status_code == 200
-    data = r.json()
-    assert data.get("status") == "already_verified"
-
-def test_verify_email_success(auth_headers, seeded):
-    """Test successful email verification."""
-    # First, send a verification email to get a valid token
-    send_r = requests.post(f"{BASE_URL}/api/auth/send-verification", headers=auth_headers)
-    assert send_r.status_code == 200
-    
-    # Manually retrieve the token from the logs or database if possible, or simulate it.
-    # For simplicity in this test, we'll assume we can get the token.
-    # In a real scenario, you might need to inspect the sent email or mock the _send_email function.
-    # For now, we'll skip direct verification test due to difficulty in obtaining a valid token without mocking _send_email.
-    pytest.skip("Skipping direct verify_email test due to difficulty in obtaining a valid token without mocking _send_email.")
-
-def test_verify_email_invalid_token(auth_headers):
-    """Test verifying email with an invalid token."""
-    r = requests.post(f"{BASE_URL}/api/auth/verify-email", json={"token": "invalid_token_abc"})
-    assert r.status_code == 400
-    assert "Invalid verification token" in r.json().get("detail", "")
-
-def test_verify_email_expired_token(auth_headers, seeded):
-    """Test verifying email with an expired token."""
-    # Simulate an expired token (e.g., by setting exp in the past)
-    secret = os.environ.get('EMAIL_VERIFICATION_JWT_SECRET') or os.environ.get('JWT_VERIFICATION_SECRET')
-    exp_past = datetime.utcnow() - timedelta(hours=1)
-    data = {'user_id': seeded["user_id"], 'email': seeded["email"], 'exp': exp_past.isoformat()}
-    expired_token = jwt.encode(data, secret, algorithm='HS256')
-    
-    r = requests.post(f"{BASE_URL}/api/auth/verify-email", json={"token": expired_token})
-    assert r.status_code == 400
-    assert "Verification token has expired" in r.json().get("detail", "")
-    db = seeded["db"]
-    u = db.users.find_one({"user_id": seeded["user_id"]})
-    assert u is not None
-    assert u["user_id"] == seeded["user_id"]
-    # created_at stored as ISO string
-    assert isinstance(u["created_at"], str)
-    s = db.user_sessions.find_one({"user_id": seeded["user_id"]})
-    assert s is not None
-    assert isinstance(s["expires_at"], str)
