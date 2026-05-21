@@ -1,0 +1,31 @@
+check_mongo_indexes.py
+  s_4d8a91684f32e7::t_089a3f1e30cf41 32
+frontend/yarn.lock
+  ai_agent 328-332,1068,1645-1652,1673,2184,2284,2311,2412,2522,2527,2534,2544,3097,3301-3305,3400,3432,3567-3570,3572,3575,3717,3724,3731-3734,3736,3793-3797,3803,3881-3888,3898-3901,4260,4292,4318-4323,4354,4383,4404-4444,4512-4516,4760,4882-4883,4889,4999,5046-5050,5308,5315-5318,5320,5378,5397-5400,6434,6629-6633,6712-6716,6754-6758,6978,8104,8214,8288,8355-8363,8410,8502,8632,8822-8835,9130,9203,9615
+frontend/src/App.js
+  s_4d8a91684f32e7::t_51bc4fe42c2b69 154
+backend/tests/test_smartgiaoan_backend.py
+  s_4d8a91684f32e7::t_089a3f1e30cf41 5
+frontend/package.json
+  s_4d8a91684f32e7::t_68dac20f7f7998 15,49
+backend/server.py
+  s_4d8a91684f32e7::t_089a3f1e30cf41 166-170
+backend/tests/test_smartgiaoan_email_verification_integration.py
+  s_4d8a91684f32e7::t_089a3f1e30cf41 81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.11",
+  "base_commit_sha": "59d517b906b1300f316f794fb6af2fb12e44099d",
+  "prompts": {},
+  "sessions": {
+    "s_4d8a91684f32e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e48e7-772b-7552-9aa5-8f88b6ddf695",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Ben Taylor <bentaylors@hotmail.co.uk>"
+    }
+  }
+}
