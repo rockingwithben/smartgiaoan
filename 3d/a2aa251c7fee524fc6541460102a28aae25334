@@ -1,0 +1,36 @@
+frontend/public/index.html
+  s_b88b659b616b8d::t_909c318972556c 138
+frontend/src/components/GoogleAdSense.jsx
+  s_b88b659b616b8d::t_909c318972556c 4
+frontend/package.json
+  s_b88b659b616b8d::t_9af4d9a75a7a69 15-16
+frontend/src/components/PaywallModal.jsx
+  s_b88b659b616b8d::t_909c318972556c 94,127
+frontend/public/manifest.json
+  s_b88b659b616b8d::t_909c318972556c 1-17
+frontend/src/pages/Pricing.jsx
+  s_b88b659b616b8d::t_121ad7ee1b8d12 84,90,104,120,126,140,180-181,201
+  s_b88b659b616b8d::t_909c318972556c 82,87,89,91,95,118,123,125,127,131,173-175,177,186-188,193-195,197,208-210,369
+frontend/src/pages/Landing.jsx
+  s_b88b659b616b8d::t_909c318972556c 340,343,370
+render.yaml
+  s_b88b659b616b8d::t_909c318972556c 6
+frontend/src/lib/i18n.js
+  s_b88b659b616b8d::t_909c318972556c 24,62,87,125
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.0",
+  "base_commit_sha": "3da2aa251c7fee524fc6541460102a28aae25334",
+  "prompts": {},
+  "sessions": {
+    "s_b88b659b616b8d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e52ba-4c38-7040-84f4-8553318a972f",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Ben Taylor <bentaylors@hotmail.co.uk>"
+    }
+  }
+}
