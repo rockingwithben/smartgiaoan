@@ -1,0 +1,23 @@
+backend/server.py
+  s_b88b659b616b8d::t_1d4442297e15a0 112,114
+  s_b88b659b616b8d::t_b41ceb77f88422 160,446-467
+render.yaml
+  s_b88b659b616b8d::t_1d4442297e15a0 42-45,48-50
+  s_b88b659b616b8d::t_b41ceb77f88422 46-47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.0",
+  "base_commit_sha": "ebd65a3120a22a681b174cdd7ecaf1b4238e503a",
+  "prompts": {},
+  "sessions": {
+    "s_b88b659b616b8d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e52ba-4c38-7040-84f4-8553318a972f",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Ben Taylor <bentaylors@hotmail.co.uk>"
+    }
+  }
+}
