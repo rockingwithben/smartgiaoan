@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 
 // AdSense Client ID - should be set in environment variables
-const ADSENSE_CLIENT_ID = process.env.REACT_APP_ADSENSE_CLIENT_ID || 'ca-pub-XXXXXXXXXXXXXXXX';
+const ADSENSE_CLIENT_ID = process.env.REACT_APP_ADSENSE_CLIENT_ID || 'ca-pub-6737475067243465';
 
 export function AdSenseScript() {
   const [loaded, setLoaded] = useState(false);

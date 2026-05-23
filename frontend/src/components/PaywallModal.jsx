@@ -91,7 +91,7 @@ export function PaywallModal({ open, onClose, onWatchAd }) {
               <div className="border border-gray-200 rounded-2xl p-6 flex flex-col relative bg-white">
                 <h3 className="font-black text-xl text-gray-900">Premium</h3>
                 <div className="mt-2 mb-4 flex items-baseline gap-1">
-                  <span className="text-3xl font-black">$6</span>
+                  <span className="text-3xl font-black">£5.67</span>
                   <span className="text-gray-500 font-medium text-sm">/mo</span>
                 </div>
                 <ul className="space-y-3 mb-8 flex-1">
@@ -124,7 +124,7 @@ export function PaywallModal({ open, onClose, onWatchAd }) {
                 </div>
                 <h3 className="font-black text-xl text-gray-900">Pro Institutional</h3>
                 <div className="mt-2 mb-4 flex items-baseline gap-1">
-                  <span className="text-3xl font-black">$13</span>
+                  <span className="text-3xl font-black">£9.99</span>
                   <span className="text-gray-500 font-medium text-sm">/mo</span>
                 </div>
                 <ul className="space-y-3 mb-8 flex-1">

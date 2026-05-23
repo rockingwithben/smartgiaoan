@@ -1,0 +1,17 @@
+{
+  "short_name": "SmartGiaoAn",
+  "name": "SmartGiaoAn ESL Worksheet Generator",
+  "description": "Cambridge and CEFR-aligned ESL worksheets localized for Vietnam.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F9F9F8",
+  "theme_color": "#1A1A1A",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "64x64 192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

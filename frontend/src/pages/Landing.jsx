@@ -337,10 +337,10 @@ export default function Landing() {
           <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-end mb-10">
             <div className="md:col-span-6">
               <p className="overline text-terracotta">Pricing</p>
-              <h2 className="font-display text-4xl lg:text-5xl mt-2">Three free. Five quid a month after.</h2>
+              <h2 className="font-display text-4xl lg:text-5xl mt-2">Three free. Upgrade when you need more.</h2>
             </div>
             <div className="md:col-span-6 text-muted-foreground leading-relaxed">
-              Three worksheets to fall in love. £5 a month if you stay. Cancel any time in PayPal — no contract, no haggling. Earn extra free credits by watching short sponsor videos (15 / 30 / 45 seconds = 1 / 2 / 3 credits).
+              Three worksheets to fall in love. Premium starts at £5.67 a month if you stay. Cancel any time in PayPal — no contract, no haggling. Earn extra free credits by watching short sponsor videos (15 / 30 / 45 seconds = 1 / 2 / 3 credits).
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -367,7 +367,7 @@ export default function Landing() {
                 <li>• Priority generation</li>
                 <li>• PDF export with branding (coming soon)</li>
               </ul>
-              <Link to="/dashboard#upgrade" className="mt-8 inline-flex items-center justify-center w-full bg-terracotta hover:bg-terracotta-hover text-white px-6 py-3 rounded-sm font-medium transition-all hover:-translate-y-[1px]" data-testid="plan-pro-cta">{t('pro_cta')}</Link>
+              <Link to="/pricing" className="mt-8 inline-flex items-center justify-center w-full bg-terracotta hover:bg-terracotta-hover text-white px-6 py-3 rounded-sm font-medium transition-all hover:-translate-y-[1px]" data-testid="plan-pro-cta">{t('pro_cta')}</Link>
             </div>
           </div>
         </section>
