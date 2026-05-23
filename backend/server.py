@@ -110,7 +110,7 @@ def validate_env_vars():
         return True
     required_vars = [
         'MONGO_URL', 'DB_NAME',
-        'GEMINI_API_KEY', 'OPENROUTER_API_KEY', 'PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET',
+        'OPENROUTER_API_KEY', 'PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET',
         # FRONTEND_URL and BACKEND_PUBLIC_URL have production defaults below.
         # Email verification needs one valid secret key.
     ]
@@ -125,11 +125,7 @@ def validate_env_vars():
             status_code=500,
             detail=f"Missing critical environment variables: {', '.join(missing_vars)}"
         )
-    if not os.environ.get('GOOGLE_APPLICATION_CREDENTIALS_JSON') and not os.environ.get('GEMINI_API_KEY'):
-        raise HTTPException(
-            status_code=500,
-            detail="Either GOOGLE_APPLICATION_CREDENTIALS_JSON or GEMINI_API_KEY must be set for AI functionality."
-        )
+    # Google AI credentials are optional. OpenRouter is the production AI provider.
 
 try:
     validate_env_vars()
@@ -163,19 +159,18 @@ EMAIL_FROM = os.environ.get('EMAIL_FROM', '').strip()
 # ============================================================
 # AI MODEL CONFIGURATION (OpenRouter Integration)
 # ============================================================
-# Free tier uses a free OpenRouter model.
-# Mid-tier / Pro uses OpenRouter's auto-selection.
-# Premium tier uses OpenRouter with Claude 3 Opus for best performance.
-OPENROUTER_MODEL_FREE    = "openrouter/free" # Or a specific free model like google/gemini-pro:free
-OPENROUTER_MODEL_BASIC   = "openrouter/auto"
-OPENROUTER_MODEL_PREMIUM = "openrouter/anthropic/claude-3-opus" # Best available model for premium users
+# OpenRouter is the production AI provider. Keep model names env-overridable
+# so changes do not require a deploy.
+OPENROUTER_MODEL_FREE    = os.environ.get("OPENROUTER_MODEL_FREE", "openrouter/auto")
+OPENROUTER_MODEL_BASIC   = os.environ.get("OPENROUTER_MODEL_BASIC", "openrouter/auto")
+OPENROUTER_MODEL_PREMIUM = os.environ.get("OPENROUTER_MODEL_PREMIUM", "openrouter/auto")
 GEMINI_MODEL_FREE = OPENROUTER_MODEL_FREE
 GEMINI_MODEL_BASIC = OPENROUTER_MODEL_BASIC
 GEMINI_MODEL_PREMIUM = OPENROUTER_MODEL_PREMIUM
 _GEMINI_FALLBACKS = {
-    OPENROUTER_MODEL_FREE: ["gemini-1.5-flash"],
-    OPENROUTER_MODEL_BASIC: ["gemini-1.5-flash"],
-    OPENROUTER_MODEL_PREMIUM: ["gemini-1.5-flash"],
+    OPENROUTER_MODEL_FREE: [],
+    OPENROUTER_MODEL_BASIC: [],
+    OPENROUTER_MODEL_PREMIUM: [],
 }
 
 TIER_CONFIG = {
@@ -607,12 +602,14 @@ if adc_json_raw:
 elif api_key and genai:
     genai.configure(api_key=api_key)
     logger.warning(
-        "AI Engine: API key mode. "
+        "AI Engine: Google API key fallback mode. "
         "If you see '400 User location not supported', go to "
         "Render Dashboard → Settings → Region → Oregon (US West)."
     )
+elif OPENROUTER_API_KEY:
+    logger.info("AI Engine: OpenRouter")
 else:
-    logger.error("CRITICAL: NO USABLE GOOGLE CREDENTIALS — all AI calls will use the disabled mock.")
+    logger.error("CRITICAL: NO OPENROUTER_API_KEY — AI calls will fail.")
 
 
 def _is_location_error(exc: Exception) -> bool:
@@ -830,16 +827,15 @@ async def _run_gemini(prompt: str, level: str, model_name: str, skill: str = "",
     last_error = "Unknown error"
 
     for current_model in model_chain:
-        logger.info(
-            f"[Gemini] model={current_model} | "
-            f"engine={'vertex/' + GEMINI_REGION if USE_VERTEX_AI else 'genai/api-key'}"
-        )
+        logger.info(f"[AI] model={current_model} | engine=openrouter")
 
         for attempt in range(3):
             try:
                 if current_model.startswith("openrouter/") or ":free" in current_model:
                     # BRANCH A: OpenRouter via HTTPX
                     logger.info(f"[OpenRouter] Routing request to {current_model}")
+                    if not OPENROUTER_API_KEY:
+                        raise HTTPException(status_code=500, detail="OPENROUTER_API_KEY is not configured.")
                     headers = {
                         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
                         "HTTP-Referer": "https://smartgiaoan.site",
@@ -1968,7 +1964,7 @@ app.add_middleware(
 async def root():
     return {
         "app": "SmartGiaoAn API", "status": "operational", "version": "3.3.0",
-        "ai_engine": "vertex_ai" if USE_VERTEX_AI else "generative_ai",
+        "ai_engine": "openrouter" if OPENROUTER_API_KEY else ("vertex_ai" if USE_VERTEX_AI else "generative_ai"),
         "ai_region": GEMINI_REGION,
     }
 
@@ -1988,6 +1984,6 @@ async def health():
     return {
         "status": "healthy",
         "db": "connected" if mongo_client else "disconnected",
-        "ai_engine": "vertex_ai" if USE_VERTEX_AI else "generative_ai",
+        "ai_engine": "openrouter" if OPENROUTER_API_KEY else ("vertex_ai" if USE_VERTEX_AI else "generative_ai"),
         "ai_region": GEMINI_REGION,
     }
