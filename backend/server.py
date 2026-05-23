@@ -109,8 +109,9 @@ def validate_env_vars():
         logger.info('Skipping environment variable validation (test mode).')
         return True
     required_vars = [
-        'MONGO_URL', 'DB_NAME', 'FRONTEND_URL', 'BACKEND_PUBLIC_URL',
+        'MONGO_URL', 'DB_NAME',
         'GEMINI_API_KEY', 'OPENROUTER_API_KEY', 'PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET',
+        # FRONTEND_URL and BACKEND_PUBLIC_URL have production defaults below.
         # Email verification needs one valid secret key.
     ]
     missing_vars = [var for var in required_vars if not os.environ.get(var)]
@@ -156,6 +157,7 @@ BACKEND_PUBLIC_URL = os.environ.get('BACKEND_PUBLIC_URL', '').rstrip("/")
 
 EMAIL_SERVICE_PROVIDER = os.environ.get('EMAIL_SERVICE_PROVIDER', 'log').strip().lower()
 EMAIL_API_KEY = os.environ.get('EMAIL_API_KEY', '').strip()
+MAILERSEND_API_KEY = os.environ.get('MAILERSEND_API_KEY', '').strip()
 EMAIL_FROM = os.environ.get('EMAIL_FROM', '').strip()
 
 # ============================================================
@@ -440,6 +442,29 @@ async def _send_email(to_email: str, subject: str, content: str) -> bool:
                 return True
         except Exception as e:
             logger.error(f"SendGrid email send failed: {e}")
+            raise
+    if EMAIL_SERVICE_PROVIDER == 'mailersend':
+        api_key = MAILERSEND_API_KEY or EMAIL_API_KEY
+        if not api_key or not EMAIL_FROM:
+            raise ValueError("MailerSend email provider configured but MAILERSEND_API_KEY/EMAIL_API_KEY or EMAIL_FROM is missing.")
+        try:
+            async with httpx.AsyncClient() as client:
+                payload = {
+                    "from": {"email": EMAIL_FROM},
+                    "to": [{"email": to_email}],
+                    "subject": subject,
+                    "text": content,
+                }
+                headers = {
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                }
+                resp = await client.post("https://api.mailersend.com/v1/email", json=payload, headers=headers, timeout=30)
+                resp.raise_for_status()
+                logger.info(f"MailerSend email sent to {to_email}")
+                return True
+        except Exception as e:
+            logger.error(f"MailerSend email send failed: {e}")
             raise
     if EMAIL_SERVICE_PROVIDER in ('log', 'console'):
         logger.info("Email provider not configured for production; logging email content instead.")

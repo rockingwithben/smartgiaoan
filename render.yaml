@@ -39,6 +39,15 @@ services:
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
+      # ---- Email verification ----------------------------------------------
+      - key: EMAIL_VERIFICATION_JWT_SECRET
+        sync: false
+      - key: EMAIL_SERVICE_PROVIDER
+        value: mailersend
+      - key: MAILERSEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        value: noreply@smartgiaoan.site
       - key: CORS_ORIGINS
         value: https://smartgiaoan.site,https://www.smartgiaoan.site
       - key: FRONTEND_URL
