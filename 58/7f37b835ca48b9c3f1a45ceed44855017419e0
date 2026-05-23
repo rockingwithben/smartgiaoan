@@ -1,0 +1,19 @@
+backend/server.py
+  s_b88b659b616b8d::t_31d186d980d503 113,128,162-166,171-173,605,609-610,612,830,837-838,1967,1987
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.0",
+  "base_commit_sha": "587f37b835ca48b9c3f1a45ceed44855017419e0",
+  "prompts": {},
+  "sessions": {
+    "s_b88b659b616b8d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e52ba-4c38-7040-84f4-8553318a972f",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Ben Taylor <bentaylors@hotmail.co.uk>"
+    }
+  }
+}
