@@ -50,6 +50,28 @@ def _clean_idempotency_cache():
     for key in keys_to_remove:
         del _IDEMPOTENCY_CACHE[key]
 
+def _idempotency_lookup(idempotency_key: Optional[str]):
+    """Return cached response for a write idempotency key, or None."""
+    if not idempotency_key:
+        return None
+    _clean_idempotency_cache()
+    cached = _IDEMPOTENCY_CACHE.get(idempotency_key)
+    if not cached:
+        return None
+    data, expiry = cached
+    if expiry >= _now():
+        logger.info("Idempotency cache hit for key: %s", idempotency_key)
+        return data
+    del _IDEMPOTENCY_CACHE[idempotency_key]
+    return None
+
+def _idempotency_store(idempotency_key: Optional[str], result):
+    """Store a write response under an idempotency key."""
+    if idempotency_key:
+        _IDEMPOTENCY_CACHE[idempotency_key] = (result, _now() + _IDEMPOTENCY_TTL)
+        logger.info("Stored result in idempotency cache for key: %s", idempotency_key)
+    return result
+
 # --- Google SDK Initialization ---
 class _GoogleSDKUnavailable(Exception):
     pass
@@ -1264,18 +1286,10 @@ async def generate_ws(
     user: User = Depends(require_user),
     _: None = Depends(get_rate_limit_dependency(limit=60, window=60)),
 ):  # Fixed: Request should not use Depends()
-    # --- Idempotency Check ---
     idempotency_key = request.headers.get("Idempotency-Key")
-    if idempotency_key:
-        _clean_idempotency_cache() # Clean up expired entries
-        if idempotency_key in _IDEMPOTENCY_CACHE:
-            cached_data, expiry = _IDEMPOTENCY_CACHE[idempotency_key]
-            if expiry >= _now():
-                logger.info(f"Idempotency cache hit for key: {idempotency_key}")
-                return cached_data # Return cached result
-            else:
-                logger.info(f"Idempotency cache expired for key: {idempotency_key}")
-                del _IDEMPOTENCY_CACHE[idempotency_key] # Remove expired entry
+    cached = _idempotency_lookup(idempotency_key)
+    if cached is not None:
+        return cached
 
     user   = await refresh_user_credits(user)
     config = TIER_CONFIG.get(user.subscription_tier, TIER_CONFIG["free"])
@@ -1318,17 +1332,10 @@ async def generate_ws(
     await db.users.update_one({"user_id": user.user_id}, {"$inc": {"free_used": 1}})
 
     result = {k: v for k, v in ws_doc.items() if k != "_id"}
-
-    # --- Store in Idempotency Cache ---
-    if idempotency_key:
-        expiry_time = _now() + _IDEMPOTENCY_TTL
-        _IDEMPOTENCY_CACHE[idempotency_key] = (result, expiry_time)
-        logger.info(f"Stored result in idempotency cache for key: {idempotency_key}")
-
     if should_show_sponsor:
         result["show_sponsor"] = True
         result["sponsor_duration"] = sponsor_duration
-    return result
+    return _idempotency_store(idempotency_key, result)
 
 @api_router.get("/worksheets")
 async def list_ws(user: User = Depends(require_user)):
@@ -1481,7 +1488,16 @@ async def update_worksheet(worksheet_id: str, payload: UpdateWorksheetRequest, u
 # API ROUTES — AI EDITOR
 # ============================================================
 @api_router.post("/worksheets/ai-edit")
-async def ai_edit_worksheet(payload: AIEditRequest, user: User = Depends(require_user)):
+async def ai_edit_worksheet(
+    payload: AIEditRequest,
+    request: Request,
+    user: User = Depends(require_user),
+):
+    idempotency_key = request.headers.get("Idempotency-Key")
+    cached = _idempotency_lookup(idempotency_key)
+    if cached is not None:
+        return cached
+
     user = await refresh_user_credits(user)
     if user.ai_edit_credits < 1:
         raise HTTPException(status_code=402, detail="No AI edit credits remaining. You get 1 free edit per month, or unlimited with Premium.")
@@ -1511,7 +1527,8 @@ async def ai_edit_worksheet(payload: AIEditRequest, user: User = Depends(require
         "edit_command": payload.command, "created_at": _now().isoformat()
     }
     await db.worksheets.insert_one(new_doc)
-    return {k: v for k, v in new_doc.items() if k != "_id"}
+    result = {k: v for k, v in new_doc.items() if k != "_id"}
+    return _idempotency_store(idempotency_key, result)
 
 @api_router.post("/worksheets/fix")
 async def fix_worksheet(payload: WorksheetFixRequest, user: User = Depends(require_user)):
@@ -1537,16 +1554,25 @@ async def fix_worksheet(payload: WorksheetFixRequest, user: User = Depends(requi
 # API ROUTES — REWARDED ADS
 # ============================================================
 @api_router.post("/usage/grant-rewarded")
-async def grant_sponsor_reward(payload: RewardedAdRequest, user: User = Depends(require_user)):
+async def grant_sponsor_reward(
+    payload: RewardedAdRequest,
+    request: Request,
+    user: User = Depends(require_user),
+):
+    idempotency_key = request.headers.get("Idempotency-Key")
+    cached = _idempotency_lookup(idempotency_key)
+    if cached is not None:
+        return cached
+
     if payload.reward_type == "ai_edit":
         if user.subscription_tier != "premium":
             raise HTTPException(status_code=403, detail="AI edit rewards require Premium.")
         bonus = 1 if payload.tier <= 15 else 2 if payload.tier <= 30 else 3
         await db.users.update_one({"user_id": user.user_id}, {"$inc": {"ai_edit_credits": bonus}})
-        return {"status": "reward_granted", "amount": bonus, "type": "ai_edit_credit"}
+        return _idempotency_store(idempotency_key, {"status": "reward_granted", "amount": bonus, "type": "ai_edit_credit"})
     bonus = 1 if payload.tier <= 15 else 2
     await db.users.update_one({"user_id": user.user_id}, {"$inc": {"bonus_credits": bonus}})
-    return {"status": "reward_granted", "amount": bonus, "type": "worksheet_credit"}
+    return _idempotency_store(idempotency_key, {"status": "reward_granted", "amount": bonus, "type": "worksheet_credit"})
 
 # ============================================================
 # API ROUTES — PUBLIC LIBRARY
@@ -1653,9 +1679,15 @@ async def public_library_feed_xml(
 @api_router.post("/library/upload")
 async def upload_library_worksheet(
     payload: LibraryUploadRequest,
+    request: Request,
     user: User = Depends(require_user),
     _: None = Depends(get_rate_limit_dependency(limit=60, window=60)),
 ):
+    idempotency_key = request.headers.get("Idempotency-Key")
+    cached = _idempotency_lookup(idempotency_key)
+    if cached is not None:
+        return cached
+
     primary_skill = payload.skills[0] if payload.skills else "reading"
     ws_id = f"ws_{uuid.uuid4().hex[:12]}"
     ws_doc = {
@@ -1680,10 +1712,20 @@ async def upload_library_worksheet(
         "created_at": _now().isoformat(),
     }
     await db.worksheets.insert_one(ws_doc)
-    return {k: v for k, v in ws_doc.items() if k != "_id"}
+    result = {k: v for k, v in ws_doc.items() if k != "_id"}
+    return _idempotency_store(idempotency_key, result)
 
 @api_router.post("/library/{worksheet_id}/clone")
-async def clone_worksheet(worksheet_id: str, user: User = Depends(require_user)):
+async def clone_worksheet(
+    worksheet_id: str,
+    request: Request,
+    user: User = Depends(require_user),
+):
+    idempotency_key = request.headers.get("Idempotency-Key")
+    cached = _idempotency_lookup(idempotency_key)
+    if cached is not None:
+        return cached
+
     original = await db.worksheets.find_one({"worksheet_id": worksheet_id, "is_public": True})
     if not original:
         raise HTTPException(status_code=404, detail="Worksheet not found or not public")
@@ -1696,7 +1738,7 @@ async def clone_worksheet(worksheet_id: str, user: User = Depends(require_user))
         "is_public": False, "created_at": _now().isoformat(), "cloned_from": worksheet_id
     }
     await db.worksheets.insert_one(new_doc)
-    return {"worksheet_id": new_id, "status": "cloned"}
+    return _idempotency_store(idempotency_key, {"worksheet_id": new_id, "status": "cloned"})
 
 # ============================================================
 # API ROUTES — BILLING
@@ -1727,7 +1769,16 @@ async def get_tier(user: User = Depends(require_user)):
     }
 
 @api_router.post("/billing/paypal-capture")
-async def paypal_capture(payload: PayPalCaptureRequest, user: User = Depends(require_user)):
+async def paypal_capture(
+    payload: PayPalCaptureRequest,
+    request: Request,
+    user: User = Depends(require_user),
+):
+    idempotency_key = request.headers.get("Idempotency-Key")
+    cached = _idempotency_lookup(idempotency_key)
+    if cached is not None:
+        return cached
+
     now = _now()
     if payload.product_type in ("premium_monthly", "pro_monthly"):
         try:
@@ -1745,7 +1796,7 @@ async def paypal_capture(payload: PayPalCaptureRequest, user: User = Depends(req
             "monthly_reset_at": (now + timedelta(days=30)).isoformat(),
             "paypal_subscription_id": payload.order_id
         }})
-        return {"status": "success", "tier": tier}
+        return _idempotency_store(idempotency_key, {"status": "success", "tier": tier})
     elif payload.product_type == "ai_edit_pack":
         try:
             order = await verify_paypal_order(payload.order_id)
@@ -1756,7 +1807,7 @@ async def paypal_capture(payload: PayPalCaptureRequest, user: User = Depends(req
         except Exception:
             raise HTTPException(status_code=400, detail="PayPal verification failed")
         await db.users.update_one({"user_id": user.user_id}, {"$inc": {"ai_edit_credits": 10}})
-        return {"status": "success", "credits_added": 10}
+        return _idempotency_store(idempotency_key, {"status": "success", "credits_added": 10})
     raise HTTPException(status_code=400, detail="Unknown product type")
 
 @api_router.post("/billing/mark-premium")

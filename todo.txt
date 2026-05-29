@@ -1,16 +1,16 @@
-- [x] Analyze current "Skill" dropdown in Landing.jsx and WorksheetUpload.jsx
-- [x] Review SKILLS definition in catalog.js
-- [x] Create SkillToggle component with Uiverse toggle design
-- [x] Implement multi-select functionality with array state management
-- [x] Ensure Reading skill is ON by default
-- [x] Prevent disabling the last active skill
-- [x] Remove Listening and Speaking skills, keep Reading, Writing, Grammar, Vocabulary
-- [x] Replace old dropdown with SkillToggle component in WorksheetUpload.jsx
-- [x] Add responsive card/grid layout
-- [x] Add ARIA labels and keyboard accessibility
-- [x] Ensure dark mode compatibility
-- [x] Test animations and edge cases
-- [x] Verify all functionality works
+# SmartGiaoAn — completed maintenance (May 2026)
 
+- [x] Restore missing WorksheetUpload.jsx (/upload Share page)
+- [x] Global UI styles (btn-primary, form-input, font-display, overline)
+- [x] WorksheetView performance (memoized blocks, useMemo, content-visibility)
+- [x] WorksheetView accessibility (skip link, aria-expanded, landmarks)
+- [x] Bundle split (worksheet blocks + content helpers in separate modules)
+- [x] Backend idempotency on all critical write routes
+- [x] Backend unit tests for idempotency helpers
+- [x] API helper uploadLibraryWorksheet
+- [x] README: tests + idempotency docs
 
-we still need to improve rendering performaces for large worksheets, reduce  bundle size throught code optimization, enhance accessinitty compliance, test performance improments with real datem verifty all existing functiontuly , run backend test, updates docmentuations and implemnt idempoteccy for critical writes
+# Optional follow-ups
+- [ ] Run full pytest suite against a local MongoDB instance
+- [ ] Lighthouse audit on production after deploy
+- [ ] Dynamic OG images per worksheet

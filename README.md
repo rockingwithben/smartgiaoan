@@ -81,7 +81,7 @@ Watch a quick walkthrough of the platform in action:
     ├── public/index.html  # PayPal SDK + Google Fonts
     └── src/
         ├── App.js
-        ├── pages/         # Landing, Dashboard, About, Pricing, FAQ, Contact, Privacy, Terms, Account, Levels, NotFound, AuthCallback
+        ├── pages/         # Landing, Dashboard, WorksheetView, WorksheetUpload, PublicLibrary, ProfileSettings, …
         ├── components/    # Navbar, Footer, WorksheetView, Paywall/UpgradeModal, RewardedAdModal, AdSlot, LangToggle
         └── lib/           # api.js, auth.jsx, i18n.js, catalog.js
     └── package.json
@@ -133,6 +133,19 @@ cd backend && uvicorn server:app --reload --host 0.0.0.0 --port 8001
 # Frontend
 cd frontend && yarn start
 ```
+
+### Tests
+```bash
+# Backend (from repo root)
+pip install -r backend/requirements.txt pytest mongomock
+python -m pytest backend/tests/test_idempotency.py backend/tests/test_rate_limiting.py -q
+
+# Frontend
+cd frontend && yarn install && yarn build
+```
+
+### Idempotency
+POST/PUT/PATCH requests from the frontend send an `Idempotency-Key` header. The API caches responses for worksheet generation, AI edits, library uploads/clones, rewarded ads, and PayPal capture for 10 minutes to prevent duplicate writes on retries.
 
 ---
 

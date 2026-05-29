@@ -8,7 +8,7 @@ export function PageShell({ eyebrow, title, intro, children, seo }) {
     <div className="min-h-screen flex flex-col bg-background">
       {seo && <SEO {...seo} />}
       <Navbar />
-      <main className="flex-1">
+      <main id="main-content" className="flex-1" tabIndex={-1}>
         <section className="border-b border-border bg-white">
           <div className="max-w-5xl mx-auto px-6 lg:px-10 py-16 lg:py-24">
             {eyebrow && <p className="overline text-terracotta">{eyebrow}</p>}

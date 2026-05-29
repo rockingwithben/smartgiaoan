@@ -1,1 +1,230 @@
-import React, { useState } from 'react'; import { Link, useNavigate } from 'react-router-dom'; import { http } from '../lib/api'; import { Navbar } from '../components/Navbar'; import { Footer } from '../components/Footer'; import { SEO } from '../meta'; import SkillToggle from '../components/SkillToggle'; export default function WorksheetUpload() { const navigate = useNavigate(); const [title, setTitle] = useState(''); const [description, setDescription] = useState(''); const [level, setLevel] = useState(''); const [selectedSkills, setSelectedSkills] = useState(['reading']); const [topic, setTopic] = useState(''); const [loading, setLoading] = useState(false); const [error, setError] = useState(''); const [success, setSuccess] = useState(''); const LEVELS = ['Kindergarten', 'Primary', 'Secondary', 'IELTS']; const handleSubmit = async (e) => { e.preventDefault(); setLoading(true); setError(''); setSuccess(''); try { const worksheetData = { title, description, level, skills: selectedSkills, topic, is_public: true }; const response = await http.post('/library/upload', worksheetData); setSuccess('Worksheet uploaded successfully! It will be visible in the library after review.'); setTitle(''); setDescription(''); setLevel(''); setSelectedSkills(['reading']); setTopic(''); setTimeout(() => { navigate('/library'); }, 2000); } catch (err) { setError(err.response?.data?.detail || 'Failed to upload worksheet. Please try again.'); console.error('Upload error:', err); } finally { setLoading(false); } }; return ( <div className="min-h-screen flex flex-col bg-gray-50"> <SEO title="Upload Worksheet | SmartGiaoAn - Share Your ESL Materials" description="Share your ESL worksheets with teachers across Vietnam. Help build our community library." keywords="upload worksheet, share ESL materials, teacher resources, Vietnam, ESL worksheets" ogUrl="https://www.smartgiaoan.site/upload" ogImage="https://www.smartgiaoan.site/og-image.svg" /> <Navbar /> <main className="flex-1 max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-12"> <div className="text-center mb-8"> <h1 className="text-3xl font-bold text-gray-900 mb-4"> Share Your Worksheet </h1> <p className="text-gray-600"> Help other teachers by sharing your ESL worksheets. All submissions are reviewed before publishing. </p> </div> {error && ( <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700"> {error} </div> )} {success && ( <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 flex items-center"> {success} <img src="https://media.giphy.com/media/3o7aD2saalBwwftBIY/giphy.gif" alt="confetti" className="ml-2 w-6 h-6" /> </div> )} <form onSubmit={handleSubmit} className="space-y-6"> <div> <label className="block text-sm font-medium text-gray-700 mb-2"> Worksheet Title </label> <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Enter a descriptive title for your worksheet" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent text-lg transition" required disabled={loading} /> </div> <div> <label className="block text-sm font-medium text-gray-700 mb-2"> Description </label> <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Describe what this worksheet covers and how to use it" rows={4} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent text-lg transition" required disabled={loading} /> </div> <div className="grid grid-cols-2 gap-4"> <div> <label className="block text-sm font-medium text-gray-700 mb-2"> Level </label> <select value={level} onChange={(e) => setLevel(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent text-lg transition" required disabled={loading} > <option value="">Select a level</option> {LEVELS.map((l) => ( <option key={l} value={l}> {l} </option> ))} </select> </div> <div> <label className="block text-sm font-medium text-gray-700 mb-2"> Skill Focus </label> <SkillToggle selectedSkills={selectedSkills} setSelectedSkills={setSelectedSkills} /> </div> </div> <div> <label className="block text-sm font-medium text-gray-700 mb-2"> Topic (Optional) </label> <input type="text" value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="e.g., Tet holiday, food, travel, technology" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent text-lg transition" disabled={loading} /> </div> <div className="flex items-center space-x-3"> <button type="submit" disabled={loading || !title || !description || !level || selectedSkills.length === 0} className="flex-1 bg-red-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed" > {loading ? 'Uploading...' : 'Share Worksheet'} </button> <Link to="/library" className="flex-1 bg-gray-200 text-gray-800 px-6 py-3 rounded-lg font-medium hover:bg-gray-300 transition" > Browse Library </Link> </div> </form> <div className="mt-8 text-center text-sm text-gray-500"> <p> By uploading, you agree to share your worksheet under a Creative Commons license. All content is reviewed to ensure quality and relevance. </p> </div> </main> <Footer /> </div> ); }
+import React, { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Loader2, Upload } from 'lucide-react';
+import { toast } from 'sonner';
+import { useAuth } from '../lib/auth';
+import { useI18n } from '../lib/i18n';
+import { uploadLibraryWorksheet } from '../lib/api';
+import { LEVELS } from '../lib/catalog';
+import SkillToggle from '../components/SkillToggle';
+import { PageShell } from '../components/PageShell';
+
+export default function WorksheetUpload() {
+  const { user, loading: authLoading } = useAuth();
+  const { lang } = useI18n();
+  const navigate = useNavigate();
+
+  const [selectedSkills, setSelectedSkills] = useState(['reading']);
+  const [submitting, setSubmitting] = useState(false);
+  const [form, setForm] = useState({
+    title: '',
+    description: '',
+    level: 'Primary',
+    topic: '',
+    is_public: true,
+  });
+
+  const copy = lang === 'vi'
+    ? {
+        eyebrow: 'Chia sẻ cộng đồng',
+        title: 'Đăng bài tập lên Thư viện',
+        intro: 'Gửi bài tập bạn đã soạn để giáo viên khác xem, sao chép và chỉnh sửa. Bài sẽ được duyệt trước khi hiển thị công khai.',
+        titleLabel: 'Tiêu đề',
+        titlePlaceholder: 'VD: Tet Market Mystery — Primary A2',
+        descriptionLabel: 'Mô tả ngắn',
+        descriptionPlaceholder: 'Bài đọc hiểu về chợ Tết, 24 câu, có đáp án…',
+        levelLabel: 'Cấp học',
+        topicLabel: 'Chủ đề (tuỳ chọn)',
+        topicPlaceholder: 'VD: Tết, ẩm thực Hà Nội, đại học…',
+        publicLabel: 'Hiển thị công khai sau khi duyệt',
+        submit: 'Gửi bài tập',
+        submitting: 'Đang gửi…',
+        success: 'Đã gửi! Bài tập đang chờ duyệt.',
+        signIn: 'Đăng nhập để chia sẻ bài tập với cộng đồng.',
+        libraryLink: 'Xem Thư viện cộng đồng →',
+      }
+    : {
+        eyebrow: 'Community share',
+        title: 'Share a worksheet',
+        intro: 'Submit a worksheet you created so other teachers can preview, clone, and adapt it. Public listings are reviewed before they go live.',
+        titleLabel: 'Title',
+        titlePlaceholder: 'e.g. Tet Market Mystery — Primary A2',
+        descriptionLabel: 'Short description',
+        descriptionPlaceholder: 'Reading comprehension on Tet market visit, 24 questions, answer key included…',
+        levelLabel: 'Level',
+        topicLabel: 'Topic (optional)',
+        topicPlaceholder: 'e.g. Tet, street food in Hanoi, university choice…',
+        publicLabel: 'List publicly after review',
+        submit: 'Submit worksheet',
+        submitting: 'Submitting…',
+        success: 'Submitted! Your worksheet is pending review.',
+        signIn: 'Sign in to share worksheets with the community.',
+        libraryLink: 'Browse the community library →',
+      };
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      navigate('/login', { replace: true, state: { from: '/upload' } });
+    }
+  }, [authLoading, navigate, user]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.title.trim() || !form.description.trim()) {
+      toast.error(lang === 'vi' ? 'Vui lòng nhập tiêu đề và mô tả.' : 'Please enter a title and description.');
+      return;
+    }
+    if (selectedSkills.length === 0) {
+      toast.error(lang === 'vi' ? 'Chọn ít nhất một kỹ năng.' : 'Select at least one skill.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const payload = {
+        title: form.title.trim(),
+        description: form.description.trim(),
+        level: form.level,
+        skills: selectedSkills,
+        topic: form.topic.trim(),
+        is_public: form.is_public,
+      };
+      const ws = await uploadLibraryWorksheet(payload);
+      toast.success(copy.success);
+      navigate(`/worksheet/${ws.worksheet_id}`);
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || (lang === 'vi' ? 'Gửi thất bại.' : 'Upload failed.'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const seo = {
+    title: lang === 'vi' ? 'Chia sẻ bài tập | SmartGiaoAn' : 'Share a Worksheet | SmartGiaoAn',
+    description: copy.intro,
+    keywords: 'ESL worksheet share, community library Vietnam, Cambridge CEFR',
+    ogUrl: 'https://www.smartgiaoan.site/upload',
+    ogImage: 'https://www.smartgiaoan.site/og-image.svg',
+  };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-terracotta" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <PageShell eyebrow={copy.eyebrow} title={copy.title} intro={copy.signIn} seo={seo}>
+        <Link to="/login" className="btn-primary inline-block">
+          {lang === 'vi' ? 'Đăng nhập' : 'Sign in'}
+        </Link>
+      </PageShell>
+    );
+  }
+
+  return (
+    <PageShell eyebrow={copy.eyebrow} title={copy.title} intro={copy.intro} seo={seo}>
+      <div className="max-w-2xl">
+        <form onSubmit={handleSubmit} className="space-y-8" data-testid="upload-form">
+          <Field label={copy.titleLabel}>
+            <input
+              required
+              className="form-input w-full"
+              placeholder={copy.titlePlaceholder}
+              value={form.title}
+              onChange={(e) => setForm({ ...form, title: e.target.value })}
+              data-testid="upload-title"
+            />
+          </Field>
+
+          <Field label={copy.descriptionLabel}>
+            <textarea
+              required
+              rows={4}
+              className="form-input w-full"
+              placeholder={copy.descriptionPlaceholder}
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              data-testid="upload-description"
+            />
+          </Field>
+
+          <Field label={copy.levelLabel}>
+            <select
+              className="form-input w-full"
+              value={form.level}
+              onChange={(e) => setForm({ ...form, level: e.target.value })}
+              data-testid="upload-level"
+            >
+              {LEVELS.map((level) => (
+                <option key={level.key} value={level.key}>
+                  {level.label} — {level.age}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <div className="rounded-2xl border border-border bg-white p-6 shadow-sm">
+            <SkillToggle selectedSkills={selectedSkills} setSelectedSkills={setSelectedSkills} />
+          </div>
+
+          <Field label={copy.topicLabel}>
+            <input
+              className="form-input w-full"
+              placeholder={copy.topicPlaceholder}
+              value={form.topic}
+              onChange={(e) => setForm({ ...form, topic: e.target.value })}
+              data-testid="upload-topic"
+            />
+          </Field>
+
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={form.is_public}
+              onChange={(e) => setForm({ ...form, is_public: e.target.checked })}
+              className="w-4 h-4 rounded border-border text-terracotta focus:ring-terracotta"
+            />
+            <span className="text-sm text-muted-foreground">{copy.publicLabel}</span>
+          </label>
+
+          <div className="flex flex-wrap items-center gap-4 pt-2">
+            <button
+              type="submit"
+              disabled={submitting}
+              className="btn-primary inline-flex items-center gap-2 disabled:opacity-60"
+              data-testid="upload-submit"
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  {copy.submitting}
+                </>
+              ) : (
+                <>
+                  <Upload className="w-4 h-4" />
+                  {copy.submit}
+                </>
+              )}
+            </button>
+            <Link to="/library" className="text-sm font-bold text-terracotta hover:underline">
+              {copy.libraryLink}
+            </Link>
+          </div>
+        </form>
+      </div>
+    </PageShell>
+  );
+}
+
+function Field({ label, children }) {
+  return (
+    <label className="block">
+      <span className="overline text-muted-foreground">{label}</span>
+      <div className="mt-1.5">{children}</div>
+    </label>
+  );
+}

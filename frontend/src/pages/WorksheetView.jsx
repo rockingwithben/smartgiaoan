@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { http, aiEditWorksheet } from '../lib/api';
 import { Printer, Share2, Copy, Check, AlertTriangle, BookOpen, GraduationCap, Calendar, ChevronDown, ChevronUp, Wand2, Loader2 } from 'lucide-react';
@@ -6,6 +6,8 @@ import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { PaywallModal } from '../components/PaywallModal';
 import { SEO } from '../meta';
+import { collectWorksheetAnswers, getContentFlags } from '../lib/worksheetContent';
+import { ExerciseBlock, QuestionItem } from '../components/worksheet/WorksheetBlocks';
 
 export default function WorksheetView() {
   const { id } = useParams();
@@ -110,6 +112,14 @@ export default function WorksheetView() {
     }
   };
 
+  const worksheetContent = worksheet?.content;
+  const flags = useMemo(() => getContentFlags(worksheetContent || {}), [worksheetContent]);
+  const allAnswers = useMemo(
+    () => (worksheet ? collectWorksheetAnswers(worksheetContent || {}) : []),
+    [worksheet, worksheetContent]
+  );
+  const hasAnyAnswers = allAnswers.length > 0;
+
   if (loading) return (
     <div className="flex justify-center items-center min-h-screen bg-gray-50">
       <div className="text-center">
@@ -133,6 +143,8 @@ export default function WorksheetView() {
 
   if (!worksheet) return null;
 
+  const content = worksheetContent || {};
+
   // SEO Meta Data
   const seoTitle = `${worksheet.title} | ESL Worksheet ${worksheet.level} (${worksheet.cefr}) - SmartGiaoAn`;
   const seoDescription = `ESL worksheet for ${worksheet.level} (${worksheet.cefr}) students focusing on ${worksheet.skill}${worksheet.topic ? ` and ${worksheet.topic}` : ``}. Generate and print your own custom worksheets.`;
@@ -140,19 +152,18 @@ export default function WorksheetView() {
   const seoOgUrl = `https://www.smartgiaoan.site/worksheet/${worksheet.worksheet_id}`;
   const seoOgImage = `https://www.smartgiaoan.site/og-image.svg`; // Use a default or generate dynamic image
 
-  const content = worksheet.content || {};
   const isKindergarten = worksheet.level?.toLowerCase().includes('kindergarten');
   const isIELTS = worksheet.level === 'IELTS' || worksheet.level === 'Secondary';
-
-  // ── Schema Detection ──
-  const hasSections = Array.isArray(content.sections) && content.sections.length > 0;
-  const hasExercises = Array.isArray(content.exercises) && content.exercises.length > 0;
-  const hasVocabulary = content.vocabulary && (content.vocabulary.glossary?.length > 0 || content.vocabulary.exercises?.length > 0);
-  const hasComprehension = content.comprehension && content.comprehension.exercises?.length > 0;
-  const hasGrammar = content.grammar && (content.grammar.exercises?.length > 0 || content.grammar.explanation);
-  const hasWriting = content.writing || content.writing_task;
-  const hasPassage = content.reading_passage || content.passage;
-  const hasListeningScript = content.listening_script;
+  const {
+    hasSections,
+    hasExercises,
+    hasVocabulary,
+    hasComprehension,
+    hasGrammar,
+    hasWriting,
+    hasPassage,
+    hasListeningScript,
+  } = flags;
 
   const handleTTS = () => {
     if (isPlaying) {
@@ -170,54 +181,14 @@ export default function WorksheetView() {
     }
   };
 
-  // Collect all answers for the answer key
-  const allAnswers = [];
-  if (content.answer_key) {
-    allAnswers.push({ title: 'Answer Key', answers: content.answer_key });
-  }
-  if (hasSections) {
-    content.sections.forEach((sec, idx) => {
-      if (sec.answer_key || sec.answers) {
-        allAnswers.push({
-          title: sec.section_title || `Section ${idx + 1}`,
-          answers: sec.answer_key || sec.answers
-        });
-      }
-    });
-  }
-  if (hasVocabulary && content.vocabulary.exercises) {
-    content.vocabulary.exercises.forEach((ex, idx) => {
-      if (ex.answers) {
-        allAnswers.push({ title: ex.instructions || `Vocabulary ${idx + 1}`, answers: ex.answers });
-      }
-    });
-  }
-  if (hasComprehension) {
-    content.comprehension.exercises.forEach((ex, idx) => {
-      if (ex.answers) {
-        allAnswers.push({ title: ex.instructions || `Comprehension ${idx + 1}`, answers: ex.answers });
-      }
-    });
-  }
-  if (hasGrammar && content.grammar.exercises) {
-    content.grammar.exercises.forEach((ex, idx) => {
-      if (ex.answers) {
-        allAnswers.push({ title: ex.instructions || `Grammar ${idx + 1}`, answers: ex.answers });
-      }
-    });
-  }
-  if (hasExercises) {
-    content.exercises.forEach((ex, idx) => {
-      if (ex.answers) {
-        allAnswers.push({ title: ex.instructions || `Exercise ${idx + 1}`, answers: ex.answers });
-      }
-    });
-  }
-
-  const hasAnyAnswers = allAnswers.length > 0;
-
   return (
     <div className="min-h-screen bg-gray-50 font-sans print:bg-white">
+      <a
+        href="#worksheet-main"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[60] focus:rounded-lg focus:bg-black focus:px-4 focus:py-2 focus:text-white"
+      >
+        Skip to worksheet content
+      </a>
       <SEO 
         title={seoTitle}
         description={seoDescription}
@@ -227,9 +198,9 @@ export default function WorksheetView() {
       />
       
       {/* ── ACTION BAR (hidden when printing) ── */}
-      <div className="print:hidden sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-gray-200">
+      <div className="print:hidden sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-gray-200" role="toolbar" aria-label="Worksheet actions">
         <div className="max-w-5xl mx-auto px-4 sm:px-8 py-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <Link to="/dashboard" className="flex items-center gap-2 text-gray-700 font-bold hover:text-black transition">
+          <Link to="/dashboard" className="flex items-center gap-2 text-gray-700 font-bold hover:text-black transition" aria-label="Back to dashboard">
             <ChevronDown className="w-5 h-5 rotate-90" />
             Dashboard
           </Link>
@@ -240,6 +211,7 @@ export default function WorksheetView() {
               value={editCommand}
               onChange={(e) => setEditCommand(e.target.value)}
               placeholder="AI Edit (e.g., 'Make section 2 harder')" 
+              aria-label="AI edit command"
               className="flex-1 text-sm border border-gray-300 rounded-lg px-3 py-2 outline-none focus:border-purple-500 transition"
               disabled={isEditing}
             />
@@ -274,7 +246,10 @@ export default function WorksheetView() {
       </div>
 
       {/* ── PRINTABLE DOCUMENT ── */}
-      <div className={`max-w-5xl mx-auto bg-white shadow-lg border-x border-gray-200 print:shadow-none print:border-none print:max-w-none ${isKindergarten ? 'p-6 sm:p-10' : 'p-8 sm:p-12'}`}>
+      <main
+        id="worksheet-main"
+        className={`worksheet-container max-w-5xl mx-auto bg-white shadow-lg border-x border-gray-200 print:shadow-none print:border-none print:max-w-none ${isKindergarten ? 'p-6 sm:p-10' : 'p-8 sm:p-12'}`}
+      >
 
         {/* Header */}
         <header className={`border-black pb-6 mb-8 ${isKindergarten ? 'border-b-4 text-center' : 'border-b-2'}`}>
@@ -320,11 +295,14 @@ export default function WorksheetView() {
 
         {/* Listening Script & TTS */}
         {hasListeningScript && (
-          <section className="mb-10 print:break-inside-avoid p-6 bg-blue-50 rounded-xl border border-blue-200 print:bg-white print:border-gray-400">
+          <section className="worksheet-section mb-10 print:break-inside-avoid p-6 bg-blue-50 rounded-xl border border-blue-200 print:bg-white print:border-gray-400">
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-bold text-xl uppercase tracking-wide text-blue-900">Listening Transcript</h3>
               <button 
+                type="button"
                 onClick={handleTTS}
+                aria-pressed={isPlaying}
+                aria-label={isPlaying ? 'Stop listening audio' : 'Play listening transcript'}
                 className="print:hidden flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-full font-bold text-sm transition shadow-sm"
               >
                 {isPlaying ? '⏹ Stop Audio' : '▶️ Play Audio'}
@@ -430,8 +408,8 @@ export default function WorksheetView() {
               </p>
             )}
             <div className={isKindergarten ? 'space-y-10' : 'space-y-6'}>
-              {section.questions && section.questions.map((q) => (
-                <QuestionItem key={q.number || Math.random()} question={q} isKindergarten={isKindergarten} />
+              {section.questions && section.questions.map((q, qIdx) => (
+                <QuestionItem key={q.number ?? q.id ?? `sec-${idx}-q-${qIdx}`} question={q} number={q.number ?? qIdx + 1} isKindergarten={isKindergarten} />
               ))}
             </div>
           </section>
@@ -474,7 +452,10 @@ export default function WorksheetView() {
         {hasAnyAnswers && (
           <section className="mt-16 pt-8 border-t-4 border-gray-800 print:break-before-page">
             <button
+              type="button"
               onClick={() => setShowAnswerKey(!showAnswerKey)}
+              aria-expanded={showAnswerKey}
+              aria-controls="worksheet-answer-key"
               className="print:hidden flex items-center gap-2 w-full text-left font-bold text-xl font-serif mb-6 hover:text-red-700 transition"
             >
               {showAnswerKey ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
@@ -482,7 +463,7 @@ export default function WorksheetView() {
             </button>
             <h3 className="hidden print:block font-bold text-xl mb-6 font-serif border-b border-gray-400 pb-2">Answer Key</h3>
             
-            <div className={`space-y-8 ${showAnswerKey ? '' : 'hidden'} print:block`}>
+            <div id="worksheet-answer-key" className={`space-y-8 answer-key-section ${showAnswerKey ? '' : 'hidden'} print:block`}>
               {allAnswers.map((section, idx) => (
                 <div key={idx} className="print:break-inside-avoid">
                   <h4 className="font-bold text-sm uppercase tracking-wide text-gray-500 mb-3 border-b border-gray-200 pb-1">
@@ -530,89 +511,8 @@ export default function WorksheetView() {
           <p>Generated by SmartGiaoAn • smartgiaoan.site</p>
           <p className="mt-1">© {new Date().getFullYear()} SmartGiaoAn. For educational use only.</p>
         </footer>
-      </div>
+      </main>
       <PaywallModal open={showPaywall} onClose={() => setShowPaywall(false)} onWatchAd={handleWatchAdForEdit} />
-    </div>
-  );
-}
-
-/* ── Sub-components ── */
-
-function ExerciseBlock({ exercise, isKindergarten, isIELTS, index }) {
-  if (!exercise) return null;
-  
-  const items = exercise.items || exercise.questions || [];
-  const instructions = exercise.instructions || exercise.prompt || exercise.title || `Exercise ${index + 1}`;
-  const exType = exercise.type || exercise.exercise_type || '';
-  
-  return (
-    <div className="mb-8 print:break-inside-avoid">
-      <h4 className={`font-bold mb-4 ${isKindergarten ? 'text-xl bg-yellow-50 p-3 rounded-lg border border-yellow-200' : 'text-lg text-gray-800'}`}>
-        {instructions}
-      </h4>
-      <div className={isKindergarten ? 'space-y-8' : 'space-y-5'}>
-        {items.map((item, i) => (
-          <QuestionItem key={i} question={item} number={i + 1} isKindergarten={isKindergarten} isIELTS={isIELTS} exerciseType={exType} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function QuestionItem({ question, number, isKindergarten, isIELTS, exerciseType }) {
-  if (!question) return null;
-  
-  // Handle both object and string formats
-  const qText = typeof question === 'string' 
-    ? question 
-    : (question.question || question.sentence || question.prompt || question.text || JSON.stringify(question));
-  
-  const options = question.options || question.choices || [];
-  const isTrueFalse = isIELTS && (exerciseType === 'true_false_not_given' || exerciseType === 'true_false');
-  const isMultipleChoice = Array.isArray(options) && options.length > 0;
-  
-  return (
-    <div className="pl-2">
-      <p className={`font-medium leading-relaxed ${isKindergarten ? 'text-2xl mb-4' : 'text-lg mb-3'}`}>
-        <span className="font-bold mr-2 text-gray-500">{number}.</span>
-        {qText}
-      </p>
-      
-      {/* True/False/Not Given (IELTS style) */}
-      {isTrueFalse && (
-        <div className="flex gap-4 pl-6 mt-3">
-          {['TRUE', 'FALSE', 'NOT GIVEN'].map(opt => (
-            <div key={opt} className="flex items-center text-sm font-bold border-2 border-gray-800 px-4 py-2 rounded bg-white">
-              <div className="w-4 h-4 border-2 border-black mr-2 bg-white"></div>
-              {opt}
-            </div>
-          ))}
-        </div>
-      )}
-      
-      {/* Multiple Choice */}
-      {!isTrueFalse && isMultipleChoice && (
-        <div className="pl-6 space-y-2 mt-3">
-          {options.map((opt, oIdx) => {
-            const optText = typeof opt === 'string' ? opt : (opt.text || opt.label || JSON.stringify(opt));
-            const optLabel = typeof opt === 'object' && opt.label ? opt.label : String.fromCharCode(65 + oIdx);
-            return (
-              <div key={oIdx} className="flex items-start group">
-                <div className="w-5 h-5 border-2 border-gray-400 rounded-full mr-3 mt-1 flex-shrink-0 group-hover:border-black transition print:border-black"></div>
-                <span className="text-gray-800">
-                  <span className="font-bold mr-1">{optLabel}.</span>
-                  {optText}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      )}
-      
-      {/* Open response (fill in blank / short answer) */}
-      {!isTrueFalse && !isMultipleChoice && (
-        <div className="mt-4 border-b-2 border-gray-300 w-full h-8 print:border-black"></div>
-      )}
     </div>
   );
 }

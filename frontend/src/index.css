@@ -6,6 +6,12 @@
 @layer base {
   :root {
     --radius: 0.25rem;
+    --background: 40 20% 98%;
+    --foreground: 0 0% 10%;
+    --border: 40 10% 88%;
+    --input: 40 10% 88%;
+    --ring: 4 65% 48%;
+    --muted-foreground: 0 0% 36%;
   }
    html {
      scroll-behavior: smooth;
@@ -15,6 +21,37 @@
    }
   body {
     @apply bg-background text-ink;
+  }
+}
+
+@layer components {
+  .font-display {
+    font-family: "Cormorant Garamond", Georgia, serif;
+  }
+
+  .overline {
+    @apply text-xs font-semibold uppercase tracking-widest;
+  }
+
+  .text-muted-foreground {
+    color: hsl(var(--muted-foreground));
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-xl bg-ink px-6 py-3 text-sm font-bold text-white transition hover:bg-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terracotta focus-visible:ring-offset-2;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded-xl border border-border bg-white px-6 py-3 text-sm font-bold text-ink transition hover:border-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terracotta focus-visible:ring-offset-2;
+  }
+
+  .form-input {
+    @apply w-full rounded-xl border border-border bg-white px-4 py-3 text-sm text-ink placeholder:text-muted-foreground focus:border-terracotta focus:outline-none focus:ring-2 focus:ring-terracotta/20;
+  }
+
+  .worksheet-section {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 500px;
   }
 }
 

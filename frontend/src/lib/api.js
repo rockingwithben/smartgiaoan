@@ -118,6 +118,11 @@ export async function generateWorksheet(payload) {
   return r.data;
 }
 
+export async function uploadLibraryWorksheet(payload) {
+  const r = await http.post('/library/upload', payload);
+  return r.data;
+}
+
 export async function aiEditWorksheet(worksheet_id, command) {
   const r = await http.post('/worksheets/ai-edit', { worksheet_id, command });
   return r.data;
