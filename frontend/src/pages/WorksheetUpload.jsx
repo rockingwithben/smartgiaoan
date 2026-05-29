@@ -1,8 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Loader2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
-import { useAuth } from '../lib/auth';
 import { useI18n } from '../lib/i18n';
 import { uploadLibraryWorksheet } from '../lib/api';
 import { LEVELS } from '../lib/catalog';
@@ -10,10 +9,8 @@ import SkillToggle from '../components/SkillToggle';
 import { PageShell } from '../components/PageShell';
 
 export default function WorksheetUpload() {
-  const { user, loading: authLoading } = useAuth();
   const { lang } = useI18n();
   const navigate = useNavigate();
-
   const [selectedSkills, setSelectedSkills] = useState(['reading']);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({
@@ -62,12 +59,6 @@ export default function WorksheetUpload() {
         libraryLink: 'Browse the community library →',
       };
 
-  useEffect(() => {
-    if (!authLoading && !user) {
-      navigate('/login', { replace: true, state: { from: '/upload' } });
-    }
-  }, [authLoading, navigate, user]);
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.title.trim() || !form.description.trim()) {
@@ -106,24 +97,6 @@ export default function WorksheetUpload() {
     ogUrl: 'https://www.smartgiaoan.site/upload',
     ogImage: 'https://www.smartgiaoan.site/og-image.svg',
   };
-
-  if (authLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-terracotta" />
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <PageShell eyebrow={copy.eyebrow} title={copy.title} intro={copy.signIn} seo={seo}>
-        <Link to="/login" className="btn-primary inline-block">
-          {lang === 'vi' ? 'Đăng nhập' : 'Sign in'}
-        </Link>
-      </PageShell>
-    );
-  }
 
   return (
     <PageShell eyebrow={copy.eyebrow} title={copy.title} intro={copy.intro} seo={seo}>

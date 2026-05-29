@@ -18,20 +18,20 @@ export default function AuthModal() {
     
     try {
       if (isLogin) {
-        // Log in
         const res = await loginWithEmail(form.email, form.password);
         localStorage.setItem('session_token', res.session_token);
-        toast.success("Welcome back!");
-      } else {
-        // Register
-        const res = await registerWithEmail(form.email, form.password, form.name || form.email.split('@')[0], "Teacher");
-        localStorage.setItem('session_token', res.session_token);
-        toast.success("Account created successfully!");
+        toast.success('Welcome back!');
+        const me = await checkAuth();
+        navigate(me?.email_verified === false ? '/verify-email' : '/dashboard', { replace: true });
+        return;
       }
-      
-      // 2000% FIX: Await global state verification, then manually push to dashboard
+
+      const res = await registerWithEmail(form.email, form.password, form.name || form.email.split('@')[0], 'Teacher');
+      localStorage.setItem('session_token', res.session_token);
+      toast.success('Account created — check your email to verify.');
       await checkAuth();
-      navigate('/dashboard', { replace: true });
+      navigate('/verify-email', { replace: true });
+      return;
       
     } catch (err) {
       toast.error(err.response?.data?.detail || "Authentication failed.");

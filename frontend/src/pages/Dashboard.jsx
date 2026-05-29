@@ -67,14 +67,10 @@ export default function Dashboard() {
   }, [user]);
 
   useEffect(() => {
-    if (!authLoading && !user) {
-      navigate('/', { replace: true });
-      return;
-    }
     if (user) {
       loadWorksheets();
     }
-  }, [user, authLoading, navigate, loadWorksheets]);
+  }, [user, loadWorksheets]);
 
   // Calculate remaining based on tier info from server
   const getRemainingDisplay = () => {
@@ -202,6 +198,10 @@ export default function Dashboard() {
         <Loader2 size={32} className="animate-spin text-indigo-600" />
       </div>
     );
+  }
+
+  if (!user) {
+    return null;
   }
 
   return (

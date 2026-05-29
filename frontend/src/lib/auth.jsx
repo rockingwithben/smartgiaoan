@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import { BACKEND_BASE, getMe, logout as apiLogout } from './api';
 
 const AuthContext = createContext(null);
+const AUTH_TIMEOUT_MS = 12000;
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -11,32 +12,43 @@ export function AuthProvider({ children }) {
     try {
       const me = await getMe();
       if (me && me.user_id) {
-        // Check if email is verified, redirect to verification page if not
-        if (!me.email_verified) {
-          setUser(null); // Clear user state to ensure no partial access
-          window.location.href = '/verify-email'; // Redirect to verification page
-          return; // Stop further processing
-        }
         setUser(me);
-      } else {
-        setUser(null);
+        return me;
       }
+      setUser(null);
+      return null;
     } catch (err) {
       console.error('Auth check failed:', err);
       setUser(null);
       if (err.response?.status === 401) {
         localStorage.removeItem('session_token');
       }
+      return null;
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    // After the backend handles the OAuth callback and redirects to '/',
-    // checkAuth() will be called to fetch the user.
-    // The 'isCallback' logic is no longer needed as the backend handles the redirect.
-    checkAuth();
+    let cancelled = false;
+
+    const runAuthCheck = async () => {
+      await checkAuth();
+      if (cancelled) return;
+    };
+
+    runAuthCheck();
+
+    const timeout = setTimeout(() => {
+      if (!cancelled) {
+        setLoading(false);
+      }
+    }, AUTH_TIMEOUT_MS);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
   }, [checkAuth]);
 
   const startLogin = useCallback(() => {

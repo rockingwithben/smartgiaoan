@@ -406,7 +406,8 @@ async def _load_user(doc: dict) -> Optional[User]:
     if not doc:
         return None
     if 'email_verified' not in doc:
-        doc['email_verified'] = False
+        # OAuth-only accounts (no password) are treated as verified.
+        doc['email_verified'] = not bool(doc.get('password_hash'))
     if "subscription_tier" not in doc:
         doc["subscription_tier"] = "premium" if doc.get("is_premium") else "free"
     if "ai_edit_credits" not in doc:

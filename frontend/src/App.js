@@ -27,6 +27,7 @@ const VerifyEmail = lazy(() => import('./pages/VerifyEmail'));
 
 import { CookieConsent } from './components/CookieConsent';
 import { SponsorManager } from './components/SponsorManager';
+import { RequireVerifiedAuth } from './components/RequireVerifiedAuth';
 import GoogleAdSenseScript from './components/GoogleAdSense';
 
 // Simple loading fallback component
@@ -78,10 +79,10 @@ function AppRouter() {
         {/* FIX: Restored the manual login route */}
         <Route path="/login" element={<Suspense fallback={<PageLoading />}><AuthModal /></Suspense>} />
         
-        <Route path="/dashboard" element={<Suspense fallback={<PageLoading />}><Dashboard /></Suspense>} />
+        <Route path="/dashboard" element={<Suspense fallback={<PageLoading />}><RequireVerifiedAuth><Dashboard /></RequireVerifiedAuth></Suspense>} />
         <Route path="/library" element={<Suspense fallback={<PageLoading />}><PublicLibrary /></Suspense>} />
         <Route path="/worksheet/:id" element={<Suspense fallback={<PageLoading />}><WorksheetView /></Suspense>} />
-        <Route path="/upload" element={<Suspense fallback={<PageLoading />}><WorksheetUpload /></Suspense>} />
+        <Route path="/upload" element={<Suspense fallback={<PageLoading />}><RequireVerifiedAuth><WorksheetUpload /></RequireVerifiedAuth></Suspense>} />
         <Route path="/auth/callback" element={<Suspense fallback={<PageLoading />}><AuthCallback /></Suspense>} />
         <Route path="/verify-email" element={<Suspense fallback={<PageLoading />}><VerifyEmail /></Suspense>} />
         <Route path="/about" element={<Suspense fallback={<PageLoading />}><About /></Suspense>} />
@@ -90,8 +91,8 @@ function AppRouter() {
         <Route path="/contact" element={<Suspense fallback={<PageLoading />}><Contact /></Suspense>} />
         <Route path="/privacy" element={<Suspense fallback={<PageLoading />}><Privacy /></Suspense>} />
         <Route path="/terms" element={<Suspense fallback={<PageLoading />}><Terms /></Suspense>} />
-        <Route path="/account" element={<Suspense fallback={<PageLoading />}><Account /></Suspense>} />
-        <Route path="/profile" element={<Suspense fallback={<PageLoading />}><ProfileSettings /></Suspense>} />
+        <Route path="/account" element={<Suspense fallback={<PageLoading />}><RequireVerifiedAuth><Account /></RequireVerifiedAuth></Suspense>} />
+        <Route path="/profile" element={<Suspense fallback={<PageLoading />}><RequireVerifiedAuth><ProfileSettings /></RequireVerifiedAuth></Suspense>} />
         <Route path="/levels" element={<Suspense fallback={<PageLoading />}><Levels /></Suspense>} />
         <Route path="*" element={<Suspense fallback={<PageLoading />}><NotFound /></Suspense>} />
       </Routes>
