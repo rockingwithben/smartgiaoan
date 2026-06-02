@@ -3,6 +3,9 @@ import { BACKEND_BASE, getMe, logout as apiLogout } from './api';
 
 const AuthContext = createContext(null);
 const AUTH_TIMEOUT_MS = 12000;
+const GOOGLE_CLIENT_ID =
+  process.env.REACT_APP_GOOGLE_CLIENT_ID ||
+  '764086051850-6qr4p6gpi6hn506pt8ejuq83di341hur.apps.googleusercontent.com';
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -20,9 +23,6 @@ export function AuthProvider({ children }) {
     } catch (err) {
       console.error('Auth check failed:', err);
       setUser(null);
-      if (err.response?.status === 401) {
-        localStorage.removeItem('session_token');
-      }
       return null;
     } finally {
       setLoading(false);
@@ -52,15 +52,14 @@ export function AuthProvider({ children }) {
   }, [checkAuth]);
 
   const startLogin = useCallback(() => {
-    const googleClientId = process.env.REACT_APP_GOOGLE_CLIENT_ID;
-    if (!googleClientId) {
+    if (!GOOGLE_CLIENT_ID) {
       console.error('Missing REACT_APP_GOOGLE_CLIENT_ID');
       window.location.href = '/login';
       return;
     }
     const backendCallbackUrl = `${BACKEND_BASE}/api/auth/google-callback`;
     const state = window.location.origin;
-    window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(googleClientId)}&redirect_uri=${encodeURIComponent(backendCallbackUrl)}&response_type=code&scope=openid%20email%20profile&state=${encodeURIComponent(state)}`;
+    window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(GOOGLE_CLIENT_ID)}&redirect_uri=${encodeURIComponent(backendCallbackUrl)}&response_type=code&scope=openid%20email%20profile&state=${encodeURIComponent(state)}`;
   }, []);
 
   const logout = useCallback(async () => {
@@ -70,7 +69,6 @@ export function AuthProvider({ children }) {
       console.warn('Logout request failed, clearing local state anyway.');
     }
     setUser(null);
-    localStorage.removeItem('session_token');
     window.location.href = '/';
   }, []);
 

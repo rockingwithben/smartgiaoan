@@ -1121,9 +1121,8 @@ async def auth_session(payload: SessionExchangeRequest):
 @api_router.get("/auth/google-callback")
 async def google_oauth_callback(
     request: Request,
-    response: Response,
     code: Optional[str] = None,
-    state: Optional[str] = None # Note: Frontend does not currently send a 'state' parameter for CSRF protection.
+    state: Optional[str] = None
 ):
     if not code:
         raise HTTPException(status_code=400, detail="Missing authorization code")
@@ -1215,14 +1214,14 @@ async def google_oauth_callback(
             if updates:
                 await db_call(db.users, 'update_one', {"user_id": user_doc["user_id"]}, {"$set": updates})
 
-        # 4. Create session and set cookie
-        token = await _create_session(user_doc["user_id"], response)
-
         frontend_origin = state.rstrip("/") if state else FRONTEND_URL
         if frontend_origin not in CORS_ORIGINS:
             frontend_origin = FRONTEND_URL
-        frontend_redirect_url = f"{frontend_origin}/auth/callback?session_id={token}"
-        return RedirectResponse(url=frontend_redirect_url, status_code=303)
+        frontend_redirect_url = f"{frontend_origin}/auth/callback"
+
+        redirect_response = RedirectResponse(url=frontend_redirect_url, status_code=303)
+        await _create_session(user_doc["user_id"], redirect_response)
+        return redirect_response
 
     except HTTPException:
         raise # Re-raise HTTPException to be handled by FastAPI
@@ -1245,7 +1244,7 @@ async def auth_logout(response: Response, request: Request):
         token = auth.split(" ")[1]
     if token:
         await db.user_sessions.delete_many({"session_token": token})
-    response.delete_cookie("session_token", path="/")
+    response.delete_cookie("session_token", path="/", secure=True, samesite="none")
     return {"status": "logged_out"}
 
 @api_router.get("/auth/export")

@@ -18,16 +18,14 @@ export default function AuthModal() {
     
     try {
       if (isLogin) {
-        const res = await loginWithEmail(form.email, form.password);
-        localStorage.setItem('session_token', res.session_token);
+        await loginWithEmail(form.email, form.password);
         toast.success('Welcome back!');
         const me = await checkAuth();
         navigate(me?.email_verified === false ? '/verify-email' : '/dashboard', { replace: true });
         return;
       }
 
-      const res = await registerWithEmail(form.email, form.password, form.name || form.email.split('@')[0], 'Teacher');
-      localStorage.setItem('session_token', res.session_token);
+      await registerWithEmail(form.email, form.password, form.name || form.email.split('@')[0], 'Teacher');
       toast.success('Account created — check your email to verify.');
       await checkAuth();
       navigate('/verify-email', { replace: true });

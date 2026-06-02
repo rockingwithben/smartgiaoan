@@ -1,12 +1,22 @@
-# Environment files (NEVER commit secrets)
+# Environment files and credentials
 .env
+.env.*
 *.env
 !.env.example
 !.env.template
-!.env.production
+credentials.json
+*credentials*.json
+*service-account*.json
+google-application-credentials*.json
+smartgiaoan-*.json
+*.pem
+*.key
+.credentials
 
 # Dependencies
 node_modules/
+frontend/node_modules/
+package-lock.json
 __pycache__/
 *.pyc
 *.pyo
@@ -16,13 +26,17 @@ __pycache__/
 venv/
 env/
 
-# Build outputs — DEFAULT we'd ignore, but for cPanel deploy we keep frontend/build
-# so the user can upload directly from a GitHub clone without needing Node on the server.
-# If you set up CI/CD later, re-add `frontend/build/` here.
+# Local runtimes and archives
+node-*/
+node.tar.gz
+
+# Build outputs
 dist/
 .next/
 out/
 *.log
+
+# Keep frontend/build trackable for cPanel/static upload workflows.
 
 # IDE
 .vscode/
@@ -33,59 +47,14 @@ out/
 Thumbs.db
 
 # Test artifacts
-test_reports/
+test_reports/*
+!test_reports/.gitkeep
+!test_reports/pytest/
+!test_reports/pytest/.gitkeep
 .coverage
 .pytest_cache/
 htmlcov/
 
-package-lock.json
-
-# Emergent runtime
+# Emergent/local scratch
 /memory/test_credentials.md
--e 
-# Environment and credential files
-.env
-.env.*
-*.env
-credentials.json
-*.pem
-*.key
-.credentials
--e 
-# Environment and credential files
-.env
-.env.*
-*.env
-credentials.json
-*.pem
-*.key
-.credentials
--e 
-# Environment and credential files
-.env
-.env.*
-*.env
-credentials.json
-*.pem
-*.key
-.credentials
--e 
-# Environment and credential files
-.env
-.env.*
-*.env
-credentials.json
-*.pem
-*.key
-.credentials
--e 
-# Environment and credential files
-.env
-.env.*
-*.env
-credentials.json
-*.pem
-*.key
-.credentials
 backend/test_google.py
-.env

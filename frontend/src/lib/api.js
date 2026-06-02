@@ -14,24 +14,10 @@ export const http = axios.create({
   withCredentials: true,
 });
 
-// WELD THE TOKEN ON BOOT
-const initialToken = localStorage.getItem('session_token');
-if (initialToken) {
-  http.defaults.headers.common['Authorization'] = `Bearer ${initialToken}`;
-}
-
-// WELD THE TOKEN ON EVERY REQUEST + ADD IDEMPOTENCY KEY
+// Add an idempotency key to mutating requests to prevent duplicate writes.
 http.interceptors.request.use((config) => {
-  const token = localStorage.getItem('session_token');
   config.headers = config.headers ?? {};
 
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  } else {
-    delete config.headers.Authorization;
-  }
-
-  // Add Idempotency-Key for POST/PUT/PATCH requests to prevent duplicate writes
   if (['post', 'put', 'patch'].includes(config.method?.toLowerCase())) {
     config.headers['Idempotency-Key'] = config.headers['Idempotency-Key'] ?? uuidv4();
   }
@@ -73,7 +59,7 @@ http.interceptors.response.use(
   }
 );
 
-// --- MANUAL AUTH EXPORTS (This is what Vercel was missing) ---
+// Email/password auth helpers.
 export async function loginWithEmail(email, password) {
   const r = await http.post('/auth/login', { email, password });
   return r.data;
@@ -84,20 +70,12 @@ export async function registerWithEmail(email, password, name, role) {
   return r.data;
 }
 
-export async function exchangeSession(session_id) {
-  const r = await http.post('/auth/session', { session_id });
-  return r.data;
-}
-// -------------------------------------------------------------
-
 export async function getMe() {
   const r = await http.get('/auth/me');
   return r.data;
 }
 
 export async function logout() {
-  localStorage.removeItem('session_token');
-  delete http.defaults.headers.common['Authorization'];
   try {
     await http.post('/auth/logout');
   } catch (e) {}

@@ -3,6 +3,9 @@ import { toast } from 'sonner';
 import { useAuth } from '../lib/auth';
 
 let paypalSdkPromise = null;
+const PAYPAL_CLIENT_ID =
+  process.env.REACT_APP_PAYPAL_CLIENT_ID ||
+  'AVFet6oHbnQhEOBEwkkqB2qW2O9Z58xu8Gj7q46_-uKdvxsvzzWw4eRlBrEQKJ6-5Chqyn9flLGGnkJJ';
 
 function loadPayPalSdk(clientId) {
   if (window.paypal) return Promise.resolve(window.paypal);
@@ -39,7 +42,6 @@ export function PayPalButton({ planId, onSuccess, onError, customId }) {
   const { user } = useAuth();
   const [sdkError, setSdkError] = useState('');
   const finalCustomId = customId || user?.user_id || '';
-  const clientId = process.env.REACT_APP_PAYPAL_CLIENT_ID || '';
 
   useEffect(() => {
     if (!containerRef.current || !planId || !finalCustomId) return;
@@ -51,7 +53,7 @@ export function PayPalButton({ planId, onSuccess, onError, customId }) {
 
     let renderedButton;
 
-    loadPayPalSdk(clientId)
+    loadPayPalSdk(PAYPAL_CLIENT_ID)
       .then((paypal) => {
         if (cancelled || !containerRef.current) return;
         renderedButton = paypal.Buttons({
@@ -95,7 +97,7 @@ export function PayPalButton({ planId, onSuccess, onError, customId }) {
         /* noop */
       }
     };
-  }, [planId, finalCustomId, clientId, onSuccess, onError]);
+  }, [planId, finalCustomId, onSuccess, onError]);
 
   if (!finalCustomId) {
     return (
